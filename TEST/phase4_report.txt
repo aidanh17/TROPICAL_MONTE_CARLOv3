@@ -1,0 +1,340 @@
+================================================================================
+TROPICAL_MONTE_CARLOv3 — PHASE 4 REPORT
+Complex exponents end-to-end + complex lifting + SplitRealImag VEGAS mode
++ Phase 4.0 SEED RESTORATION (the fix for the prior RED run)
+Generated: Thu Jun 25 17:48:49 EDT 2026
+Branch: v3-build   Base commit: 14b1499 (Phase 3)
+================================================================================
+
+RESULT: PHASE4-TEST PASS (17/17 checks).  Self-gate: PASS.
+
+--------------------------------------------------------------------------------
+4.0 SEED FIX — what was wrong and what was done
+--------------------------------------------------------------------------------
+The prior Phase-4 attempt was RED for ONE reason: the unified EvaluateTropicalMC
+dropped Tree B's SeedBase / argv[5] runtime seed override.  SeedBase->99 emitted
+the SAME 'seed = 42ULL + kp' as ->42, so cross-check #22 was unsatisfiable
+(grep argv[5] tropical_eval.wl == 0).  The complex-exponent / complex-coefficient-
+lifting / SplitRealImag PHYSICS was already correct and is PRESERVED unchanged.
+
+Fix (purely additive, plan.md §2.4/§3.4/§8.6, Tree B ~L1784):
+  (i)  EvaluateTropicalMC + evaluateTropicalIBPDriver: added "SeedBase"->42 option,
+       forwarded via vegasOpts -> GenerateCppMonteCarlo[/IBP] -> emitMain.
+  (ii) emitMain, BOTH MC mains (non-IBP and IBP): emit
+         uint64_t seed_base = (argc>5) ? std::strtoull(argv[5],nullptr,10) : <SeedBase>ULL;
+       and use 'seed = seed_base + kp'.  VEGAS mains untouched (Sobol seed).
+  (iii) grep -c argv[5] tropical_eval.wl  =>  6   (was 0)
+
+Emitted-seed verification (SeedBase->99 differs from ->42):
+  SeedBase 42 -> 'uint64_t seed_base = (argc > 5) ? std::strtoull(argv[5], nullptr, 10) : 42ULL;'
+  SeedBase 99 -> 'uint64_t seed_base = (argc > 5) ? std::strtoull(argv[5], nullptr, 10) : 99ULL;'
+  => emitted output differs; files_differ = True (smoke test).
+
+--------------------------------------------------------------------------------
+GOLDEN DIFF — Phase-3 committed (HEAD 14b1499) -> Phase-4 regenerated
+PROOF the change is PURELY ADDITIVE (seed-override lines only)
+--------------------------------------------------------------------------------
+
+VEGAS goldens (6): BYTE-IDENTICAL (seed change does not touch the VEGAS mains)
+  IDENTICAL   conv_nokat_vegas_batch.cpp
+  IDENTICAL   conv_nokat_vegas_perkp.cpp
+  IDENTICAL   ibpdiv_vegas_batch.cpp
+  IDENTICAL   ibpdiv_vegas_perkp.cpp
+  IDENTICAL   subdiv_vegas_batch.cpp
+  IDENTICAL   subdiv_vegas_perkp.cpp
+
+MC goldens (3): differ ONLY in the documented seed-override lines.
+Per-file unified diff (the ONLY hunks are: usage [seed_base]; 2 added parse lines;
+seed=42ULL+kp -> seed=seed_base+kp):
+
+----- conv_nokat_mc.cpp -----
+--- /private/tmp/claude-502/-Users-aidanh-Desktop-TROPICAL-MONTE-CARLO3/1fd07992-ec7f-43fc-97ed-9cc4d983f63e/scratchpad/goldens_phase3/conv_nokat_mc.cpp	2026-06-25 17:42:28
++++ TEST/baselines/codegen_goldens/conv_nokat_mc.cpp	2026-06-25 17:45:29
+@@ -81,7 +81,7 @@
+ 
+ int main(int argc, char* argv[]) {
+     if (argc < 3) {
+-        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> [n_samples] [n_threads]" << std::endl;
++        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> [n_samples] [n_threads] [seed_base]" << std::endl;
+         return 1;
+     }
+ 
+@@ -89,6 +89,8 @@
+     std::string output_file = argv[2];
+     int n_samples = (argc > 3) ? std::atoi(argv[3]) : 1000000;
+     int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
++    // Optional runtime seed override (argv[5]); falls back to compile-time SeedBase.
++    uint64_t seed_base = (argc > 5) ? std::strtoull(argv[5], nullptr, 10) : 42ULL;
+ #ifdef _OPENMP
+     if (n_threads == 1) n_threads = omp_get_max_threads();
+     omp_set_num_threads(n_threads);
+@@ -129,7 +131,7 @@
+     #pragma omp parallel for schedule(dynamic)
+     for (int kp = 0; kp < n_kp; kp++) {
+         const double* params = kinematic_data[kp].data();
+-        uint64_t seed = 42ULL + (uint64_t)kp;
++        uint64_t seed = seed_base + (uint64_t)kp;
+         std::mt19937_64 rng(seed);
+         std::uniform_real_distribution<double> dist(0.0, 1.0);
+ 
+
+----- subdiv_mc.cpp -----
+--- /private/tmp/claude-502/-Users-aidanh-Desktop-TROPICAL-MONTE-CARLO3/1fd07992-ec7f-43fc-97ed-9cc4d983f63e/scratchpad/goldens_phase3/subdiv_mc.cpp	2026-06-25 17:42:28
++++ TEST/baselines/codegen_goldens/subdiv_mc.cpp	2026-06-25 17:45:32
+@@ -104,7 +104,7 @@
+ 
+ int main(int argc, char* argv[]) {
+     if (argc < 3) {
+-        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> [n_samples] [n_threads]" << std::endl;
++        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> [n_samples] [n_threads] [seed_base]" << std::endl;
+         return 1;
+     }
+ 
+@@ -112,6 +112,8 @@
+     std::string output_file = argv[2];
+     int n_samples = (argc > 3) ? std::atoi(argv[3]) : 1000000;
+     int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
++    // Optional runtime seed override (argv[5]); falls back to compile-time SeedBase.
++    uint64_t seed_base = (argc > 5) ? std::strtoull(argv[5], nullptr, 10) : 42ULL;
+ #ifdef _OPENMP
+     if (n_threads == 1) n_threads = omp_get_max_threads();
+     omp_set_num_threads(n_threads);
+@@ -152,7 +154,7 @@
+     #pragma omp parallel for schedule(dynamic)
+     for (int kp = 0; kp < n_kp; kp++) {
+         const double* params = kinematic_data[kp].data();
+-        uint64_t seed = 42ULL + (uint64_t)kp;
++        uint64_t seed = seed_base + (uint64_t)kp;
+         std::mt19937_64 rng(seed);
+         std::uniform_real_distribution<double> dist(0.0, 1.0);
+ 
+
+----- ibpdiv_mc.cpp -----
+--- /private/tmp/claude-502/-Users-aidanh-Desktop-TROPICAL-MONTE-CARLO3/1fd07992-ec7f-43fc-97ed-9cc4d983f63e/scratchpad/goldens_phase3/ibpdiv_mc.cpp	2026-06-25 17:42:28
++++ TEST/baselines/codegen_goldens/ibpdiv_mc.cpp	2026-06-25 17:45:35
+@@ -121,7 +121,7 @@
+ 
+ int main(int argc, char* argv[]) {
+     if (argc < 3) {
+-        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> [n_samples] [n_threads]" << std::endl;
++        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> [n_samples] [n_threads] [seed_base]" << std::endl;
+         return 1;
+     }
+ 
+@@ -129,6 +129,8 @@
+     std::string output_file = argv[2];
+     int n_samples = (argc > 3) ? std::atoi(argv[3]) : 1000000;
+     int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
++    // Optional runtime seed override (argv[5]); falls back to compile-time SeedBase.
++    uint64_t seed_base = (argc > 5) ? std::strtoull(argv[5], nullptr, 10) : 42ULL;
+ #ifdef _OPENMP
+     if (n_threads == 1) n_threads = omp_get_max_threads();
+     omp_set_num_threads(n_threads);
+@@ -158,7 +160,7 @@
+     #pragma omp parallel for schedule(dynamic)
+     for (int kp = 0; kp < n_kp; kp++) {
+         const double* params = kinematic_data[kp].data();
+-        uint64_t seed = 42ULL + (uint64_t)kp;
++        uint64_t seed = seed_base + (uint64_t)kp;
+         std::mt19937_64 rng(seed);
+         std::uniform_real_distribution<double> dist(0.0, 1.0);
+ 
+
+STRONG PROOF: after stripping the 4 seed-override line patterns (Usage:, the
+argv[5] comment, the seed_base parse, the 'uint64_t seed =' use) from BOTH the
+Phase-3 and Phase-4 versions, the remainder is BYTE-IDENTICAL:
+  conv_nokat_mc.cpp : remainder BYTE-IDENTICAL  (md5 e3ea1ad980c7d92506cc684b82bc24cd)
+  subdiv_mc.cpp : remainder BYTE-IDENTICAL  (md5 d72dd3bba58c97bce8f8db001c101de1)
+  ibpdiv_mc.cpp : remainder BYTE-IDENTICAL  (md5 68a8783fbf7c95dbfb22dd970276678a)
+
+--------------------------------------------------------------------------------
+#22 DETERMINISM — runtime argv[5] override on ONE compiled binary
+Testbed P=1+x1^2+x2^2, B=-3, exact integral = Pi/8 = 0.39269908169872414
+--------------------------------------------------------------------------------
+=== #22 seed reproducibility (runtime argv[5] override, ONE binary) ===
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp
+  3 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 3 integrand functions
+#22 emitted MC main parses argv[5] (seed override present) PASS
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22_bin /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22_bin /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp:36:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp:52:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp:91:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+4 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22_bin
+#22 single binary compiled PASS
+  default-seed run #1 line: 0.39254700421536415 0 0.00011934365893012039 0
+  default-seed run #2 line: 0.39254700421536415 0 0.00011934365893012039 0
+#22 same seed => byte-identical output PASS
+  exact = Pi/8 = 0.39269908169872414
+  seed=123: Re=0.39274306875067266 +/-0.00011941805036970336  (0.36834508528941584 sigma)
+  seed=777: Re=0.3928136490598302 +/-0.00011947730535905001  (0.9589047958668723 sigma)
+  streams distinct (Re differ): True
+#22 distinct argv[5] seeds => distinct streams PASS
+#22 each seeded stream within 5 sigma of Pi/8 PASS
+
+PHASE4-TEST PASS  (17/17 checks passed)
+
+================================================================================
+FULL TEST TRANSCRIPT (TEST/test_complex_phase4.wl)
+================================================================================
+=== Direct complex path (#1 NIntegrate, #2 exact Gamma) ===
+EX2  Direct #1 PASS  got=0.22166075706515348 - 0.1720694305994417*I  ref=0.22165134071656128 - 0.17206301011999578*I  relerr=ScientificForm[0.000040616663863262735, 3]  tol=1/1000
+EX15 Direct #1 PASS  got=1.2296139249905165 - 0.550959764809632*I  ref=1.229619414655208 - 0.5509641495425887*I  relerr=ScientificForm[5.21430626106808*^-6, 3]  tol=1/1000
+EX16 Direct #1 PASS  got=0.26122359863762545 - 0.27870562228520734*I  ref=0.26122819290312166 - 0.2787019332327072*I  relerr=ScientificForm[0.000015424722709476384, 3]  tol=1/1000
+EX19 Direct #1 PASS  got=18.404852090991536 - 8.441034605040665*I  ref=18.404858856937935 - 8.441035698709719*I  relerr=ScientificForm[3.384876636168294*^-7, 3]  tol=1/200
+EX21 Direct #2 exactGamma PASS  got=0.028153594466200683 - 0.020012449297890214*I  ref=0.028153307479840285 - 0.020012320491972924*I  relerr=ScientificForm[9.106968916679398*^-6, 3]  tol=1/10000
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc_generated.cpp
+  4 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 4 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc_generated.cpp:36:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc_generated.cpp:52:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc_generated.cpp:68:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc_generated.cpp:108:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+5 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/tropical_mc
+EX21 Direct #2 C++ MC PASS  got=0.02806587895559633 - 0.019887040707678827*I  ref=0.028153307479840285 - 0.020012320491972924*I  relerr=ScientificForm[0.0044228301572607305, 3]  tol=1/100
+=== Complex-coefficient lifting (#40 identity, exactness) ===
+#40 cx-lift round-trip identity exact PASS
+#40 lifted decomposition exact (pg6) PASS  got=11.631805202085674 - 2.584404910157178*I  ref=11.631805145330413 - 2.5844048843210063*I  relerr=ScientificForm[5.233470962772061*^-9, 3]  tol=1/100000
+=== #21b complex-BASE SplitRealImag vs Direct vs ref (unlifted C++ MC) ===
+
+NIntegrate::slwcon: Numerical integration converging too slowly; suspect one of the following: singularity, value of the integration is 0, highly oscillatory integrand, or WorkingPrecision too small.
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc_generated.cpp
+  3 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 3 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc_generated.cpp:37:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc_generated.cpp:54:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc_generated.cpp:94:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+4 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_direct/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc_generated.cpp
+  3 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 3 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc_generated.cpp:40:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc_generated.cpp:60:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc_generated.cpp:103:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+4 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/21b_split/tropical_mc
+  ref=0.21129791239278964 - 0.5834584857218407*I
+  Direct=0.21119039032578513 - 0.5835202168597337*I +/-0.00013409856004030428 + 0.00009662737002151708*I   Split=0.2112926471816343 - 0.5833339255305269*I +/-0.00023691455445497124 + 0.00021819064768984858*I
+  Direct vs ref=ScientificForm[0.00019979801155400921, 3]   Split vs ref=ScientificForm[0.00020090776792536065, 3]   Split vs Direct=ScientificForm[0.0003424492464055054, 3]
+#21b Split==Direct==ref (unlifted) PASS
+=== #21b LIFTED complex-base SplitRealImag (MonoFactorLog / BUG-1, exact) ===
+
+NIntegrate::slwcon: Numerical integration converging too slowly; suspect one of the following: singularity, value of the integration is 0, highly oscillatory integrand, or WorkingPrecision too small.
+#21b lifted #40 round-trip identity exact PASS
+  ref=0.6140180350973838 - 0.8910809122123419*I
+  lifted Split WITH  MonoFactorLog = 0.61401286425244 - 0.8910825259608585*I  relErr=ScientificForm[5.005610497602844*^-6, 3]
+  lifted Split WITHOUT MonoFactorLog = 0.9550491912475024 + 0.37061483470780465*I  relErr=ScientificForm[1.2077585752199693, 3]  (must be wrong)
+#21b lifted SplitRealImag == ref (exact decomposition+phase) PASS
+#21b MonoFactorLog is REQUIRED (dropping it is wrong) PASS
+=== #22 seed reproducibility (runtime argv[5] override, ONE binary) ===
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp
+  3 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 3 integrand functions
+#22 emitted MC main parses argv[5] (seed override present) PASS
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22_bin /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22_bin /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp:36:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp:52:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22.cpp:91:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+4 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase4_test/seed22/seed22_bin
+#22 single binary compiled PASS
+  default-seed run #1 line: 0.39254700421536415 0 0.00011934365893012039 0
+  default-seed run #2 line: 0.39254700421536415 0 0.00011934365893012039 0
+#22 same seed => byte-identical output PASS
+  exact = Pi/8 = 0.39269908169872414
+  seed=123: Re=0.39274306875067266 +/-0.00011941805036970336  (0.36834508528941584 sigma)
+  seed=777: Re=0.3928136490598302 +/-0.00011947730535905001  (0.9589047958668723 sigma)
+  streams distinct (Re differ): True
+#22 distinct argv[5] seeds => distinct streams PASS
+#22 each seeded stream within 5 sigma of Pi/8 PASS
+
+PHASE4-TEST PASS  (17/17 checks passed)
+EXIT=0

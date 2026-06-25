@@ -336,7 +336,7 @@ Module[
    selectedRays, mMatrix, detM, n,
    transformedPolys, clearedPolys, minExponents,
    rawAVals, effectiveAVals,
-   flattenedPolys, prefactor,
+   flattenedPolys, prefactor, monoFactorLog,
    isDivergent, divVar, verbose, sectorData,
    parsedPolys},
 
@@ -465,6 +465,20 @@ Module[
     prefactor      = flat["Prefactor"];
   ];
 
+  (* MonoFactorLog (plan.md §6.3 Fix B / lift_error_log L3) — the log of the
+     tropical MONOMIAL factor y^{d_k} that clearing removed from P_k, expressed
+     in the FLATTENED coords y' (y_i = (y_i')^{1/a_eff,i}):
+        log(monomial factor_k) = Sum_i d_{k,i} log y_i
+                               = Const_k + Sum_i Coeffs_{k,i} log y'_i,
+     with (unlifted) Const_k = 0 and Coeffs_{k,i} = d_{k,i}/a_eff,i.
+     Consumed ONLY by the opt-in SplitRealImag codegen phase (Im(B)!=0); the
+     real-exponent / Direct path ignores it, so the emitted C++ is unchanged. *)
+  monoFactorLog = Table[
+    <|"Const"  -> 0,
+      "Coeffs" -> Table[minExponents[[k, i]]/effectiveAVals[[i]], {i, n}]|>,
+    {k, Length[clearedPolys]}
+  ];
+
   sectorData = <|
     "ConeIndex"            -> coneIndex,
     "RayMatrix"            -> mMatrix,
@@ -477,6 +491,7 @@ Module[
     "ClearedPolys"         -> clearedPolys,
     "FlattenedPolys"       -> flattenedPolys,
     "Prefactor"            -> prefactor,
+    "MonoFactorLog"        -> monoFactorLog,
     "IsDivergent"          -> False,
     "DivergentVariable"    -> 0,
     "Dimension"            -> n,
@@ -964,7 +979,7 @@ Module[
    pivotP, mp, ap, mOtherVec, atildeVals, reclearedPolys,
    allOtherZero, domainClass, logZ0,
    fsResult, flattenedPolys, prefactor, prefactorBase,
-   isRealPos},
+   monoFactorLogLifted, isRealPos},
 
   verbose = OptionValue["Verbose"];
 
@@ -1161,6 +1176,30 @@ Module[
   flattenedPolys = fsResult["FlattenedPolys"];
   prefactor      = fsResult["Prefactor"];
 
+  (* MonoFactorLog (plan.md §6.3 Fix B / lift_error_log L3), LIFTED case.
+     log P_k = log(monomial factor) + log Q_k, where the augmented tropical
+     clearing removed y^{d^aug_k} and the pivot substitution + re-clearing
+     removed z0^{d^aug_{k,p}/m_p} * Prod_j y_j^{...}.  In the flattened coords
+     y' (y_j = (y_j')^{1/atilde_j}):
+        Const_k   = (d^aug_{k,p}/m_p) * log z0
+        Coeffs_{k,j} = [ (d^aug_{k,rIdx[j]} - d^aug_{k,p}*m_{rIdx[j]}/m_p)
+                         + rcMin_{k,j} ] / atilde_j
+     d^aug_{k,*} = sdAug["MinExponents"][[k]] (the augmented cleared minima);
+     p=pivotP, m_p=mp, rIdx=remainIdx, rcMin=bestPivot["rcMin"], atilde=atildeVals.
+     Consumed only by the SplitRealImag phase (Im(B)!=0); real path unaffected. *)
+  monoFactorLogLifted = Module[{dAug = sdAug["MinExponents"], rIdx, rcMinL},
+    rIdx   = bestPivot["remainIdx"];
+    rcMinL = bestPivot["rcMin"];
+    Table[
+      <|"Const"  -> (dAug[[k, pivotP]]/mp) * logZ0,
+        "Coeffs" -> Table[
+          ((dAug[[k, rIdx[[j]]]] - dAug[[k, pivotP]]*mOtherVec[[j]]/mp)
+            + rcMinL[[k, j]]) / atildeVals[[j]],
+          {j, n}]|>,
+      {k, Length[reclearedPolys]}
+    ]
+  ];
+
   (* ---- Step 6: assemble full SectorData ---- *)
   <|
     "ConeIndex"           -> coneIndex,
@@ -1174,6 +1213,7 @@ Module[
     "ClearedPolys"        -> reclearedPolys,
     "FlattenedPolys"      -> flattenedPolys,
     "Prefactor"           -> prefactor,
+    "MonoFactorLog"       -> monoFactorLogLifted,
     "IsDivergent"         -> False,
     "DivergentVariable"   -> 0,
     "Dimension"           -> n,
@@ -2003,8 +2043,15 @@ normalizeIntegrator[s_] := Switch[s,
    -------------------------------------------------------------------------- *)
 emitBaseFuncBody[funcName_String, comment_String, resultVar_String,
                  flatPolys_List, polyExps_List, prefactor_, dim_Integer,
-                 paramMap_Association, domainConstraint_: None] :=
-Module[{funcCode},
+                 paramMap_Association, domainConstraint_: None,
+                 monoFactorLogs_: None, imagExps_: None] :=
+Module[{funcCode, useSplit},
+  (* SplitRealImag (plan.md §6.3) is active for this function ONLY when an
+     imaginary-exponent list is supplied AND some entry is nonzero.  Otherwise
+     the Direct product line below is emitted verbatim — so the real-exponent /
+     Direct path is byte-identical to the Phase-2 goldens (cross-check #25). *)
+  useSplit = ListQ[imagExps] &&
+    AnyTrue[imagExps, (!TrueQ[PossibleZeroQ[#]]) &];
   funcCode = "inline cx " <> funcName <>
     "(const double* y, const double* params) {\n";
   funcCode = funcCode <> "    // " <> comment <> "\n";
@@ -2052,6 +2099,43 @@ Module[{funcCode},
       mmaToCInternal[polyExps[[j]], paramMap] <>
       " * std::log(P" <> ToString[j - 1] <> "));\n";,
     {j, Length[polyExps]}
+  ];
+
+  (* SplitRealImag oscillatory phase (plan.md §6.3; TMCv2_BUG_LOG BUG 1 +
+     lift_error_log L3).  In SplitRealImag mode the sector was processed with
+     Re(B), so the product above is the MAGNITUDE Prod_j P_j^{Re B_j}; here we
+     reintroduce the imaginary exponents as one oscillatory factor
+        exp( Sum_j i*Im(B_j) * ( log P_j^{true} ) ),  log P_j^{true} =
+            std::log(P_j)            (COMPLEX log — BUG 1 fix; NOT std::abs)
+          + MonoFactorLog_j          (the dropped tropical monomial factor — L3)
+     with MonoFactorLog_j = Const_j + Sum_i Coeffs_{j,i} * log_y[i]. *)
+  If[useSplit,
+    Module[{phaseTerms, mfl, constStr, coeffStr, logPstr, jj},
+      phaseTerms = {};
+      Do[
+        If[!TrueQ[PossibleZeroQ[imagExps[[j]]]],
+          mfl = If[ListQ[monoFactorLogs] && Length[monoFactorLogs] >= j,
+                   monoFactorLogs[[j]], <|"Const" -> 0, "Coeffs" -> {}|>];
+          constStr = mmaToCInternal[N[mfl["Const"]], paramMap];
+          coeffStr = StringJoin@Table[
+            If[TrueQ[PossibleZeroQ[mfl["Coeffs"][[jj]]]], "",
+              " + " <> mmaToCInternal[N[mfl["Coeffs"][[jj]]], paramMap] <>
+              " * log_y[" <> ToString[jj - 1] <> "]"],
+            {jj, Length[mfl["Coeffs"]]}];
+          logPstr = "std::log(P" <> ToString[j - 1] <> ")";
+          AppendTo[phaseTerms,
+            "cx(0.0, " <> mmaToCInternal[N[imagExps[[j]]], paramMap] <> ") * (" <>
+            logPstr <> " + (" <> constStr <> coeffStr <> "))"];
+        ],
+        {j, Length[polyExps]}
+      ];
+      If[phaseTerms =!= {},
+        funcCode = funcCode <> "    // SplitRealImag oscillatory phase (Im(B); complex log P + MonoFactorLog)\n";
+        funcCode = funcCode <> "    cx phaseSum = " <>
+          StringRiffle[phaseTerms, " + "] <> ";\n";
+        funcCode = funcCode <> "    " <> resultVar <> " *= std::exp(phaseSum);\n";
+      ]
+    ]
   ];
   funcCode
 ];
@@ -2129,13 +2213,19 @@ Module[
   Do[
     Module[{sd, funcCode},
       sd = convergentSectors[[s]];
+      (* SplitRealImag (plan.md §6.3): the driver attaches "ImagPolyExponents"
+         (= Im(B) per polynomial) to a sector ONLY in SplitRealImag mode, after
+         processing it with Re(B).  When absent (Direct / real-exponent path),
+         emitBaseFuncBody emits the verbatim Direct product (byte-identical, #25). *)
       funcCode = emitBaseFuncBody[
         "integrand_conv_" <> ToString[s - 1],
         "Convergent sector " <> ToString[sd["ConeIndex"]],
         "result",
         sd["FlattenedPolys"], sd["PolynomialExponents"],
         sd["Prefactor"], sd["Dimension"], paramMap,
-        Lookup[sd, "DomainConstraint", None]];
+        Lookup[sd, "DomainConstraint", None],
+        Lookup[sd, "MonoFactorLog", None],
+        Lookup[sd, "ImagPolyExponents", None]];
       funcCode = funcCode <> "    return result;\n}\n";
       AppendTo[integrandFuncs, funcCode];
       AppendTo[integrandDims, sd["Dimension"]];
@@ -2487,7 +2577,7 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
     integrator === "MC" && !isIBP,
   code = "int main(int argc, char* argv[]) {\n";
   code = code <> "    if (argc < 3) {\n";
-  code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [n_samples] [n_threads]\" << std::endl;\n";
+  code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [n_samples] [n_threads] [seed_base]\" << std::endl;\n";
   code = code <> "        return 1;\n";
   code = code <> "    }\n\n";
 
@@ -2496,6 +2586,9 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
   code = code <> "    int n_samples = (argc > 3) ? std::atoi(argv[3]) : " <>
     ToString[nSamples] <> ";\n";
   code = code <> "    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;\n";
+  code = code <> "    // Optional runtime seed override (argv[5]); falls back to compile-time SeedBase.\n";
+  code = code <> "    uint64_t seed_base = (argc > 5) ? std::strtoull(argv[5], nullptr, 10) : " <>
+    ToString[seedBase] <> "ULL;\n";
   code = code <> "#ifdef _OPENMP\n";
   code = code <> "    if (n_threads == 1) n_threads = omp_get_max_threads();\n";
   code = code <> "    omp_set_num_threads(n_threads);\n";
@@ -2536,7 +2629,7 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
   code = code <> "    #pragma omp parallel for schedule(dynamic)\n";
   code = code <> "    for (int kp = 0; kp < n_kp; kp++) {\n";
   code = code <> "        const double* params = kinematic_data[kp].data();\n";
-  code = code <> "        uint64_t seed = " <> ToString[seedBase] <> "ULL + (uint64_t)kp;\n";
+  code = code <> "        uint64_t seed = seed_base + (uint64_t)kp;\n";
   code = code <> "        std::mt19937_64 rng(seed);\n";
   code = code <> "        std::uniform_real_distribution<double> dist(0.0, 1.0);\n\n";
 
@@ -2636,7 +2729,7 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
     integrator === "MC" && isIBP,
   code = "int main(int argc, char* argv[]) {\n";
   code = code <> "    if (argc < 3) {\n";
-    code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [n_samples] [n_threads]\" << std::endl;\n";
+    code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [n_samples] [n_threads] [seed_base]\" << std::endl;\n";
     code = code <> "        return 1;\n";
     code = code <> "    }\n\n";
 
@@ -2645,6 +2738,9 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
     code = code <> "    int n_samples = (argc > 3) ? std::atoi(argv[3]) : " <>
       ToString[nSamples] <> ";\n";
     code = code <> "    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;\n";
+    code = code <> "    // Optional runtime seed override (argv[5]); falls back to compile-time SeedBase.\n";
+    code = code <> "    uint64_t seed_base = (argc > 5) ? std::strtoull(argv[5], nullptr, 10) : " <>
+      ToString[seedBase] <> "ULL;\n";
     code = code <> "#ifdef _OPENMP\n";
     code = code <> "    if (n_threads == 1) n_threads = omp_get_max_threads();\n";
     code = code <> "    omp_set_num_threads(n_threads);\n";
@@ -2676,7 +2772,7 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
     code = code <> "    #pragma omp parallel for schedule(dynamic)\n";
     code = code <> "    for (int kp = 0; kp < n_kp; kp++) {\n";
     code = code <> "        const double* params = kinematic_data[kp].data();\n";
-    code = code <> "        uint64_t seed = " <> ToString[seedBase] <> "ULL + (uint64_t)kp;\n";
+    code = code <> "        uint64_t seed = seed_base + (uint64_t)kp;\n";
     code = code <> "        std::mt19937_64 rng(seed);\n";
     code = code <> "        std::uniform_real_distribution<double> dist(0.0, 1.0);\n\n";
 
@@ -3241,6 +3337,11 @@ Options[EvaluateTropicalMC] = {
   "LiftData"       -> None,
   "NSamples"       -> 1000000,
   "NThreads"       -> Automatic,
+  (* Seed base for the per-kp MC streams (plan.md §3.4, §8.6, Tree B).  Forwarded
+     to the emitted C++ as the compile-time default; the binary also accepts a
+     runtime argv[5] override (seed_base) so ONE compiled binary can be re-run
+     under distinct seeds without recompiling (determinism cross-check #22). *)
+  "SeedBase"       -> 42,
   "RunChecks"      -> True,
   "EpsilonValue"   -> None,
   "TestEpsilon"    -> 0.01,
@@ -3250,6 +3351,12 @@ Options[EvaluateTropicalMC] = {
   (* sampler selection (default = the zero-dependency plain Monte Carlo) *)
   "Integrator"     -> "MC",    (* "MC" | "VEGAS" (aliases "MonteCarlo"/"Vegas") *)
   "Batch"          -> False,         (* chunked-ncomp VEGAS (VEGAS only) *)
+  (* Complex polynomial exponents (plan.md §6.3).  Automatic -> "Direct"
+     ( result *= exp(B*log P), correct for any complex B ).  "SplitRealImag" is
+     the opt-in VEGAS-variance mode: process sectors on Re(B) and reintroduce
+     Im(B) as an oscillatory phase (complex log P + MonoFactorLog).  No effect
+     on real exponents (no phase block emitted when Im(B)=0). *)
+  "ComplexExponentMode" -> Automatic,
   Sequence @@ $vegasOptionDefaults
 };
 
@@ -3265,7 +3372,8 @@ Module[
    workDir, epsVal, testEps, precGoal, eps,
    integrator, batch, useCuba, vegasOpts, method,
    liftData, isLifted, liftedSpec, originalSpec,
-   emptyDomainCount, hasConstList},
+   emptyDomainCount, hasConstList, cxMode, hasImagB,
+   cxSplit, imBList, specForProc},
 
   runChecks  = OptionValue["RunChecks"];
   verbose    = OptionValue["Verbose"];
@@ -3279,7 +3387,11 @@ Module[
   integrator = normalizeIntegrator[OptionValue["Integrator"]];
   batch      = TrueQ[OptionValue["Batch"]];
   useCuba    = (integrator === "VEGAS");
+  (* Complex-exponent mode (plan.md §6.3).  Automatic -> "Direct". *)
+  cxMode     = OptionValue["ComplexExponentMode"];
+  If[cxMode === Automatic, cxMode = "Direct"];
   vegasOpts  = {"Integrator" -> integrator, "Batch" -> batch,
+    "SeedBase" -> OptionValue["SeedBase"],
     "VegasEpsRel" -> OptionValue["VegasEpsRel"],
     "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
     "VegasSeed" -> OptionValue["VegasSeed"],
@@ -3291,6 +3403,18 @@ Module[
   isLifted = (liftData =!= None);
   liftedSpec   = integrandSpec;  (* in lifted mode this IS the lifted (n+1) spec *)
   originalSpec = If[isLifted, liftData["OriginalSpec"], integrandSpec];
+
+  (* --- SplitRealImag setup (plan.md §6.3) ---
+     Active only when the user opted in AND some polynomial exponent B_j has a
+     nonzero imaginary part.  Then sectors are decomposed on Re(B) (real
+     importance measure for VEGAS), and Im(B_j) is reintroduced per convergent
+     sector via the "ImagPolyExponents" key, which the codegen turns into the
+     oscillatory phase (complex log P + MonoFactorLog).  Direct mode and the
+     real-exponent path leave specForProc = the spec unchanged and attach no
+     ImagPolyExponents, so the emitted C++ is byte-identical (#25). *)
+  imBList  = Im[integrandSpec["PolynomialExponents"]];
+  hasImagB = AnyTrue[imBList, (!TrueQ[PossibleZeroQ[#]]) &];
+  cxSplit  = (cxMode === "SplitRealImag") && hasImagB;
 
   (* Lifted-mode fan-dimension assertion (n+1 rays per simplex coordinate). *)
   If[isLifted,
@@ -3386,11 +3510,16 @@ Module[
        $Failed (liftcomplex/liftnopivot/liftdivergent) aborts the whole call;
        EmptyDomain sectors contribute 0 and are dropped+counted; the rest are
        convergent.  No "divergent sectors" exist in lifted mode (plan.md §6.2). *)
+    (* SplitRealImag (plan.md §6.3): decompose on Re(B) so the lifted importance
+       measure is real; Im(B) is reattached as "ImagPolyExponents" for the
+       codegen phase.  Direct/real path: specForProc === liftedSpec unchanged. *)
+    specForProc = If[cxSplit,
+      MapAt[Re, liftedSpec, {Key["PolynomialExponents"]}], liftedSpec];
     allSectorData = {};
     Catch[
       Do[
         Module[{sd},
-          sd = ProcessSectorLifted[liftedSpec, dualVertices,
+          sd = ProcessSectorLifted[specForProc, dualVertices,
                                    simplexList[[s]], s, liftData,
                                    "Verbose" -> verbose];
           Which[
@@ -3399,6 +3528,7 @@ Module[
             AssociationQ[sd] && KeyExistsQ[sd, "EmptyDomain"] && sd["EmptyDomain"],
               emptyDomainCount++,
             True,
+              If[cxSplit, sd["ImagPolyExponents"] = imBList];
               AppendTo[allSectorData, sd];
               AppendTo[hasConstList, sd["HasConstantTerm"]]
           ]
@@ -3428,8 +3558,13 @@ Module[
                 {Key["PolynomialExponents"]}] &,
           integrandSpec
         ];
+        (* SplitRealImag (plan.md §6.3): decompose on Re(B); reattach Im(B). *)
+        If[cxSplit,
+          specToUse = MapAt[Re, specToUse, {Key["PolynomialExponents"]}]];
         sd = ProcessSector[specToUse, dualVertices,
                            simplexList[[s]], s, "Verbose" -> verbose];
+        If[cxSplit && AssociationQ[sd] && !TrueQ[sd["IsDivergent"]],
+          sd["ImagPolyExponents"] = imBList];
         sd
       ],
       {s, Length[simplexList]}
@@ -4822,6 +4957,7 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
 Options[evaluateTropicalIBPDriver] = {
   "NSamples"         -> 1000000,
   "NThreads"         -> Automatic,
+  "SeedBase"         -> 42,   (* compile-time default; runtime argv[5] override (#22) *)
   "RunChecks"        -> True,
   "WorkingDirectory" -> Automatic,
   "Verbose"          -> True,
@@ -4853,6 +4989,7 @@ Module[
   batch      = TrueQ[OptionValue["Batch"]];
   useCuba    = (integrator === "VEGAS");
   vegasOpts  = {"Integrator" -> integrator, "Batch" -> batch,
+    "SeedBase" -> OptionValue["SeedBase"],
     "VegasEpsRel" -> OptionValue["VegasEpsRel"],
     "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
     "VegasSeed" -> OptionValue["VegasSeed"],

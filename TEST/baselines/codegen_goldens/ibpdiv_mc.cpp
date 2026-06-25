@@ -121,7 +121,7 @@ const int MAX_DIM = 20;
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> [n_samples] [n_threads]" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <input_file> <output_file> [n_samples] [n_threads] [seed_base]" << std::endl;
         return 1;
     }
 
@@ -129,6 +129,8 @@ int main(int argc, char* argv[]) {
     std::string output_file = argv[2];
     int n_samples = (argc > 3) ? std::atoi(argv[3]) : 1000000;
     int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+    // Optional runtime seed override (argv[5]); falls back to compile-time SeedBase.
+    uint64_t seed_base = (argc > 5) ? std::strtoull(argv[5], nullptr, 10) : 42ULL;
 #ifdef _OPENMP
     if (n_threads == 1) n_threads = omp_get_max_threads();
     omp_set_num_threads(n_threads);
@@ -158,7 +160,7 @@ int main(int argc, char* argv[]) {
     #pragma omp parallel for schedule(dynamic)
     for (int kp = 0; kp < n_kp; kp++) {
         const double* params = kinematic_data[kp].data();
-        uint64_t seed = 42ULL + (uint64_t)kp;
+        uint64_t seed = seed_base + (uint64_t)kp;
         std::mt19937_64 rng(seed);
         std::uniform_real_distribution<double> dist(0.0, 1.0);
 
