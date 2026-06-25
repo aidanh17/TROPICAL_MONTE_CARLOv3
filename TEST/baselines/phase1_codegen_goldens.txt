@@ -1,0 +1,94 @@
+=======================================================================
+PHASE 1 CODEGEN GOLDENS -- started: Thu 25 Jun 2026 12:21:51
+v3 root: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3
+work dir: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen
+golden dir: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/TEST/baselines/codegen_goldens
+=======================================================================
+
+--- Spec 1: conv, no kinematics (Pi/8) ---
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen/conv_nokat_mc.cpp
+  3 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 3 integrand functions
+  SAVED conv_nokat_mc.cpp  (7040 chars)
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen/conv_nokat_vegas_perkp.cpp  (Vegas, per-kp)
+  3 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 3 integrand functions
+  SAVED conv_nokat_vegas_perkp.cpp  (5908 chars)
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen/conv_nokat_vegas_batch.cpp  (Vegas, batched-ncomp)
+  3 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 3 integrand functions
+  SAVED conv_nokat_vegas_batch.cpp  (6171 chars)
+
+--- Spec 2: divergent 1D (g0, g1, rem) ---
+Sector 1: variable y_1 divergent, a_1(eps) = 1 * eps + ..., c_k = 1
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen/subdiv_mc.cpp
+  1 convergent sectors
+  1 G0 integrands
+  1 G1 integrands
+  1 remainder integrands
+  Total: 4 integrand functions
+  SAVED subdiv_mc.cpp  (7615 chars)
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen/subdiv_vegas_perkp.cpp  (Vegas, per-kp)
+  1 convergent sectors
+  1 G0 integrands
+  1 G1 integrands
+  1 remainder integrands
+  Total: 4 integrand functions
+  SAVED subdiv_vegas_perkp.cpp  (6483 chars)
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen/subdiv_vegas_batch.cpp  (Vegas, batched-ncomp)
+  1 convergent sectors
+  1 G0 integrands
+  1 G1 integrands
+  1 remainder integrands
+  Total: 4 integrand functions
+  SAVED subdiv_vegas_batch.cpp  (6746 chars)
+
+--- Spec 3: IBP divergent 1D (ibp-boundary, ibp-term) ---
+IBPReduceSector: sector 1, divergent variables: y_{1}, effective exponents at eps=0: {0}
+  IBP step for y_1: 1 -> 1 terms
+Generated IBP C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen/ibpdiv_mc.cpp
+  1 convergent sectors
+  4 IBP integrands (1 sectors)
+  Total: 5 integrand functions
+  SAVED ibpdiv_mc.cpp  (7209 chars)
+Generated IBP C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen/ibpdiv_vegas_perkp.cpp  (Vegas, per-kp)
+  1 convergent sectors
+  4 IBP integrands (1 sectors)
+  Total: 5 integrand functions
+  SAVED ibpdiv_vegas_perkp.cpp  (7233 chars)
+NOTE: batched-ncomp Vegas is not implemented for the IBP path (VEGAS plan T8, deferred); using per-kp Vegas.
+Generated IBP C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/phase1_codegen/ibpdiv_vegas_batch.cpp  (Vegas, per-kp)
+  1 convergent sectors
+  4 IBP integrands (1 sectors)
+  Total: 5 integrand functions
+  SAVED ibpdiv_vegas_batch.cpp  (7233 chars)
+
+=======================================================================
+CODEGEN GOLDENS SUMMARY
+=======================================================================
+Total files attempted: 9
+  conv_nokat_mc.cpp  7040 chars
+  conv_nokat_vegas_perkp.cpp  5908 chars
+  conv_nokat_vegas_batch.cpp  6171 chars
+  subdiv_mc.cpp  7615 chars
+  subdiv_vegas_perkp.cpp  6483 chars
+  subdiv_vegas_batch.cpp  6746 chars
+  ibpdiv_mc.cpp  7209 chars
+  ibpdiv_vegas_perkp.cpp  7233 chars
+  ibpdiv_vegas_batch.cpp  7233 chars
+
+OK: 9  MISSING: 0
+Golden dir: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/TEST/baselines/codegen_goldens
+
+=======================================================================
+PHASE 1 CODEGEN GOLDENS COMPLETE -- ended: Thu 25 Jun 2026 12:22:01
+=======================================================================
