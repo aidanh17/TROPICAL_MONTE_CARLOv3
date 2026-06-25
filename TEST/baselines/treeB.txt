@@ -1,0 +1,1433 @@
+=======================================================================
+TREE B GOLDEN CAPTURE â started: Thu 25 Jun 2026 12:08:57
+Working directory: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2
+=======================================================================
+
+Loading tropical_eval.wl...
+Package loaded.
+
+=======================================================================
+  RUNNING VALIDATION SUITE (Tests 1,2,3v2,5,6,7)
+=======================================================================
+
+tropical_eval.wl loaded successfully
+
+=== Example 1: Basic 2D convergent integral ===
+Integral[0,Inf] dx1 dx2 / (1 + x1^2 + x2^2)^3
+
+Fan: 3 rays, 3 sectors
+Sector 1: det(M) = -1, rawA = {1, 1}, minExp = {{0, 0}}, effA = {1, 1}
+  -> Convergent, prefactor = 1
+  Effective exponents: {1, 1}
+  Prefactor: 1
+  # monomials in Q: {3}
+  Dominant monomial (should have exps=0): {1, {0, 0}}
+
+Sector 2: det(M) = -1, rawA = {-2, 1}, minExp = {{-2, 0}}, effA = {4, 1}
+  -> Convergent, prefactor = 1/4
+  Effective exponents: {4, 1}
+  Prefactor: 1/4
+  # monomials in Q: {3}
+  Dominant monomial (should have exps=0): {1, {0, 0}}
+
+Sector 3: det(M) = 1, rawA = {-2, 1}, minExp = {{-2, 0}}, effA = {4, 1}
+  -> Convergent, prefactor = 1/4
+  Effective exponents: {4, 1}
+  Prefactor: 1/4
+  # monomials in Q: {3}
+  Dominant monomial (should have exps=0): {1, {0, 0}}
+
+Validating against NIntegrate...
+  Direct NIntegrate:  0.3926989769323744
+  Sector sum:         0.3926986967898546
+  Relative error:     7.133772590427623*^-7
+  Per-sector results: {0.3136728159757153, 0.03951294040706968, 0.03951294040706968}
+
+=== Example 2: Complex exponents ===
+Integral[0,Inf] dx1 dx2 / (1+2x1^2+x2^2+x1*x2^2+3x1^2*x2)^{2+I}
+
+Sector 1 details:
+  Effective exponents (complex): {1, 1}
+  Prefactor (complex): 1
+
+Flattening magnitude check (should be O(1)):
+  Mean |integrand|: 0.22673820287631785
+  Min:  0.04559239405831835
+  Max:  0.5870877554809459
+
+Full validation:
+  Direct NIntegrate: 0.22165134071656128 - 0.17206301011999578*I
+  Sector sum:        0.22166075706515348 - 0.1720694305994417*I
+  Relative error:    0.000040616663863262735
+
+=== Example 3: Kinematic-dependent integral ===
+Integral[0,Inf] dx1 dx2 / (1 + lam*x1^2 + x2^2 + x1*x2^2)^2
+
+Fan: 4 sectors
+Sector 1 (symbolic):
+  Effective exponents: {1, 1}
+  Prefactor: 1
+  First monomial coeff: 1
+
+Validation at multiple kinematic points:
+  lam = 0.5:  direct = 0.8084871775638375  sector sum = 0.8084782107634058  rel err = 0.000011090838148774516
+  lam = 1.:  direct = 0.6089344310640405  sector sum = 0.6089297745187889  rel err = 7.647038850269395*^-6
+  lam = 2.:  direct = 0.4542183279620661  sector sum = 0.45421701180123325  rel err = 2.897639200912914*^-6
+  lam = 5.:  direct = 0.30409217735717914  sector sum = 0.3041035718455275  rel err = 0.00003747050794725302
+
+=== Example 4: Tropical factoring step by step ===
+
+Sector 1: det(M) = -1, rawA = {-1, -2}, minExp = {{-2, -3}}, effA = {-1 + 2*A, -2 + 3*A}
+  -> Convergent, prefactor = 1/((-1 + 2*A)*(-2 + 3*A))
+
+Step-by-step breakdown:
+  Rays: rho1 = {0, 1}, rho2 = {1, 1}
+  M = -Transpose[rays] = {{0, -1}, {-1, -1}}
+  det(M) = -1
+
+  Raw a (from monomial exponents only):
+    a = (monoExps+1) . M = {-1, -2}
+
+  Transformed polynomial monomials (in y-space):
+    1 * y^{0, 0}
+    2 * y^{0, -2}
+    3 * y^{-1, -3}
+    1 * y^{-2, -2}
+    1 * y^{-2, -3}
+
+  Min exponents (dominant monomial): {{-2, -3}}
+
+  Cleared polynomial Q (non-negative exponents):
+    1 * y^{2, 3}
+    2 * y^{2, 1}
+    3 * y^{1, 0}
+    1 * y^{0, 1}
+    1 * y^{0, 0}
+
+  Effective exponents:
+    a_eff = rawA + B*minExp = {-1 + 2*A, -2 + 3*A}
+    (For A=2: a_eff = {3, 4})
+    (For A=3: a_eff = {5, 7})
+
+  Flattened polynomial (exponents / a_eff):
+    1 * y'^{2/(-1 + 2*A), 3/(-2 + 3*A)}
+    2 * y'^{2/(-1 + 2*A), (-2 + 3*A)^(-1)}
+    3 * y'^{(-1 + 2*A)^(-1), 0}
+    1 * y'^{0, (-2 + 3*A)^(-1)}
+    1 * y'^{0, 0}
+
+=== Example 5: MmaToC expression converter ===
+
+Integer:      42.0
+Rational:     (3.0/7.0)
+Real:         3.14159
+Complex:      cx(2.0, 3.0)
+Power:        std::pow(x, 3.0)
+Sqrt:         std::sqrt(x)
+Log:          std::log(x)
+Exp:          std::exp(x)
+Sum:          (a + b + c)
+Product:      (a * b * c)
+With params:  (1.0 + (2.0 * params[0]))
+Complex expr: std::pow((1.0 + params[0]), cx(2.0, 1.0))
+
+=== Example 6: C++ code generation and execution ===
+Integral[0,Inf] dx1 dx2 / (1 + x1^2 + x2^2)^3 = Pi/8
+
+Processed 3 convergent sectors
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc.cpp
+  3 convergent sectors
+  Total: 3 integrand functions
+
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc.cpp:36:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc.cpp:52:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc.cpp:91:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+4 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example6_mc
+
+Results:
+  Exact   = 0.39269908169872414
+  MC      = 0.39223622210311637 +/- 0.0003373926582783814
+  Rel err = 0.0011786622815758707
+
+=== Example 7: C++ with kinematic scan ===
+Integral[0,Inf] dx1 dx2 / (1+lam*x1^2+x2^2+x1*x2^2)^2
+10 values of lam in [0.5, 5]
+
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example7_mc.cpp
+  4 convergent sectors
+  Total: 4 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example7_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example7_mc.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example7_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example7_mc.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example7_mc.cpp:112:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+1 warning generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/example7_mc
+
+Results (MC vs NIntegrate):
+  lam     MC Re           MC err        NIntegrate
+  0.50    0.807290        0.000730339   0.808489
+  1.00    0.609101        0.000556366   0.608936
+  1.50    0.514366        0.000541881   0.513569
+  2.00    0.453910        0.000538867   0.454221
+  2.50    0.412449        0.00053878    0.412508
+  3.00    0.379857        0.000536748   0.381027
+  3.50    0.355608        0.00053622    0.356126
+  4.00    0.335914        0.000535608   0.335763
+  4.50    0.319099        0.000533027   0.318689
+  5.00    0.304172        0.000530909   0.304093
+
+=== Example 8: ParsePolynomial utility ===
+
+Polynomial: 1 + 3*lam*x[1]^2 + 2*x[1]*x[2] + x[2]^3
+Variables:  {x[1], x[2]}
+
+Parsed monomials {coefficient, exponents}:
+  1 * x^{0, 0}
+  3*lam * x^{2, 0}
+  2 * x^{1, 1}
+  1 * x^{0, 3}
+
+=== Example 9: Multiple polynomials ===
+Integral[0,Inf] dx1 dx2 x1^{1/2} / [(1+x1+x2)^2 * (1+x1*x2)]
+
+Fan: 5 sectors
+Sector 1: effA = {3/2, 1}, div = False
+Sector 2: effA = {3/2, 1}, div = False
+Sector 3: effA = {5/2, 3/2}, div = False
+Sector 4: effA = {3/2, 3/2}, div = False
+Sector 5: effA = {3/2, 5/2}, div = False
+
+Validation:
+  Direct NIntegrate: 0.7471477724775337
+  Sector sum:        0.7471218023891817
+  Relative error:    0.00003475897179739646
+
+=== Example 10: Numerator polynomial (1+x1)^{3/2} ===
+Integral[0,Inf] dx1 dx2 (1+x1)^{3/2} / (1+x1^2+x2^2+x1*x2)^3
+
+Fan: 4 sectors
+Sector 1: effA = {1, 1}, div = False, prefactor = 1
+Sector 2: effA = {5/2, 1}, div = False, prefactor = 2/5
+Sector 3: effA = {5, 1}, div = False, prefactor = 1/5
+Sector 4: effA = {5/2, 5}, div = False, prefactor = 2/25
+
+Validation:
+  Direct NIntegrate: 0.535812897235544
+  Sector sum:        0.5359128493031966
+  Relative error:    0.00018654285510530632
+
+=== Example 11: Two numerator factors ===
+Integral[0,Inf] dx1 dx2 (1+x1+x2)^{1/2}*(x1+x2)^{1/3} / (1+2x1^2+x2^2+x1*x2^2)^2
+
+Fan: 6 sectors
+Sector 1: effA = {1, 7/3}, div = False
+Sector 2: effA = {1, 2/3}, div = False
+Sector 3: effA = {1, 7/3}, div = False
+Sector 4: effA = {19/18, 2/3}, div = False
+Sector 5: effA = {13/18, 1}, div = False
+Sector 6: effA = {19/18, 13/18}, div = False
+
+Validation:
+  Direct NIntegrate: 0.7011682571339339
+  Sector sum:        0.7012279173180217
+  Relative error:    0.00008508682970279692
+
+=== Example 12: Numerator with kinematic coefficients ===
+Integral[0,Inf] dx1 dx2 (1+lam*x1)^{3/2} / (1+x1^2+x2^2)^3
+
+Fan: 4 sectors
+
+Validation at multiple kinematic points:
+  lam = 0.5:  direct = 0.5564139835804645  sector sum = 0.5564165611840085  rel err = 4.63252833342734*^-6
+  lam = 1.:  direct = 0.7482919334723337  sector sum = 0.7483489529612759  rel err = 0.00007619952373082704
+  lam = 2.:  direct = 1.200997752685657  sector sum = 1.2008634576388466  rel err = 0.00011181956544888313
+  lam = 5.:  direct = 2.9865603040815785  sector sum = 2.98639823893235  rel err = 0.00005426481729070994
+
+=== Example 13: 3D convergent integral ===
+Integral[0,Inf] dx1 dx2 dx3 / (1 + x1^2 + x2^2 + x3^2 + x1*x2*x3)^3
+
+Fan: 6 rays, 8 sectors
+Sector 1: effA = {1, 1, 1}, div = False, prefactor = 1
+Sector 2: effA = {4, 4, 1}, div = False, prefactor = 1/16
+Sector 3: effA = {4, 1, 1}, div = False, prefactor = 1/4
+Sector 4: effA = {4, 4, 1}, div = False, prefactor = 1/16
+Sector 5: effA = {4, 1, 1}, div = False, prefactor = 1/4
+Sector 6: effA = {4, 4, 4}, div = False, prefactor = 1/32
+Sector 7: effA = {4, 4, 1}, div = False, prefactor = 1/16
+Sector 8: effA = {4, 1, 1}, div = False, prefactor = 1/4
+
+Validation:
+  Direct NIntegrate: 0.26482423806498834
+  Sector sum:        0.2648333702850404
+  Relative error:    0.00003448407939840415
+
+=== Example 14: 4D convergent integral ===
+Integral[0,Inf] dx1 dx2 dx3 dx4 / (1+x1^2+x2^2+x3^2+x4^2+x1*x2+x3*x4)^4
+
+Fan: 8 rays, 14 sectors
+Convergent sectors: 14 / 14
+Sector 1: effA = {1, 1, 1, 1}, prefactor = 1
+Sector 2: effA = {6, 6, 6, 1}, prefactor = 1/54
+Sector 3: effA = {6, 6, 1, 1}, prefactor = 1/18
+Sector 4: effA = {6, 1, 1, 1}, prefactor = 1/6
+  ... (10 more)
+
+Validation:
+  Direct NIntegrate: 0.060936373306103325
+  Sector sum:        0.06094511956155343
+  Relative error:    0.00014353094835767776
+
+=== All examples complete ===
+
+################################################################
+#  Invoking RunAllTests[] (Module-5 validation suite)          #
+################################################################
+
+================================================================
+  TropicalEval Validation Suite (v2: convergent integrals only)
+  Tests: 1, 2, 3v2, 5, 6, 7
+================================================================
+
+--- Test 1: Convergent 2D, real exponents ---
+Integral[0,Inf] dx1 dx2 / (1+2x1^2+x2^2+x1*x2^2+3x1^2*x2)^A
+  A = 2:
+    NIntegrate = 0.3610128558089914
+    Sector sum = 0.3610108194006753
+    Rel error  = 0.00021514468234327573
+    PASS
+  A = 3:
+    NIntegrate = 0.2030848147412046
+    Sector sum = 0.20308396820714944
+    Rel error  = 1.422065804097969*^-6
+    PASS
+--- Test 2: Convergent 2D, complex exponents ---
+Same integral, A = 2 + 0.5I
+  NIntegrate = 0.3112708835440054 - 0.12261694637657725*I
+  Sector sum = 0.3112722115271244 - 0.12261702711022615*I
+  Rel error  = 3.976775704064447*^-6
+  PASS
+--- Test 3v2: Negative tests (regulator and divergent input) ---
+  Part A (eps-regulated spec -> $Failed): PASS
+  Part B (genuinely divergent spec -> $Failed): PASS
+  Test 3v2 PASS
+--- Test 5: End-to-end kinematic scan ---
+Int dx1 dx2 / (1+lam*x1^2+x2^2+x1*x2^2)^{2+0.5I}
+100 values of lam in [0.1, 10]
+Computing NIntegrate reference values...
+  lam = 0.1: NIntegrate = 1.2962478746244144 - 0.5055060257843832*I
+  lam = 2.5000000000000004: NIntegrate = 0.3458404071535736 - 0.15189287047257896*I
+  lam = 5.: NIntegrate = 0.25325743594177885 - 0.11379471681008992*I
+  lam = 7.5: NIntegrate = 0.21029982268107403 - 0.09566172633787579*I
+  lam = 10.: NIntegrate = 0.18404860726744812 - 0.08441035745268657*I
+  lam = 0.1: sector rel err = 6.681586380305051*^-6 PASS
+  lam = 2.5000000000000004: sector rel err = 0.000012480950961781766 PASS
+  lam = 5.: sector rel err = 0.00004521180046562403 PASS
+  lam = 7.5: sector rel err = 0.000011455939851105183 PASS
+  lam = 10.: sector rel err = 7.097470058511195*^-6 PASS
+  Max relative error: 0.00004521180046562403
+  PASS
+--- Test 6: Large polynomial coefficients ---
+Verifies correctness when coefficients span many orders of magnitude
+
+  Case A: P = 1 + 10^6 x1^2 + x2^2 + x1*x2^2, exponent -2
+    NIntegrate = 0.0007850074779405956
+    Sector sum = 0.0007849539982702149
+    Rel error  = 0.00006716806309717654
+    PASS
+
+  Case B: coefficients from 10^-4 to 10^4, exponent -2
+    NIntegrate = 144.05784339471822
+    Sector sum = 144.04704179722273
+    Rel error  = 0.00007430672023202734
+    PASS
+
+  Case C: P = 1 + 10^8 x1^3*x2 + x2^3, exponent -3
+    NIntegrate = 0.00168407391187717
+    Sector sum = 0.00168677137414064
+    Rel error  = 0.0017634662035494381
+    PASS
+
+  PASS
+--- Test 7: Higher-dimensional integrals (3D and 4D) ---
+Tests that the pipeline works correctly in dimensions > 2
+
+  Case A (3D): P = 1 + x1^2 + x2^2 + x3^2 + x1*x2*x3, exponent -3
+    Fan: 6 rays, 8 sectors
+    NIntegrate = 0.26482423806498834
+    Sector sum = 0.2648333702850404
+    Rel error  = 0.00003448407939840415
+    PASS
+
+  Case B (4D): P = 1+x1^2+x2^2+x3^2+x4^2+x1*x2+x3*x4, exponent -4
+    Fan: 8 rays, 14 sectors
+    NIntegrate = 0.060936373306103325
+    Sector sum = 0.06094511956155343
+    Rel error  = 0.00014353094835767776
+    PASS
+
+  PASS
+
+================================================================
+  Results: 6 PASSED, 0 FAILED
+================================================================
+
+Per-test results: {{Test 1, True}, {Test 2, True}, {Test 3v2, True}, {Test 5, True}, {Test 6, True}, {Test 7, True}}
+>>> VALIDATION SUITE: ALL TESTS PASSED
+
+=======================================================================
+  RUNNING test_lifted.wl (Test 23)
+=======================================================================
+
+tropical_eval.wl loaded
+
+
+================================================================
+  Test 23: Lifted-integral pipeline (§8.2)
+================================================================
+
+--- Test 23A: Toy 1 exactness via LiftCoefficients + ValidateLiftedDecomposition ---
+  z0 = 1/1000
+  Lifted poly: 1 + x[1] + x[2]*x[3]^2
+  Identity check: PASS
+  Explicit fan: 5 rays, 6 sectors
+  NIntegrate (direct) = 499888.0302476812
+  Sector sum          = 499960.3886856028
+  Relative error      = 0.0001447492909277451
+  DroppedSectors      = 3
+  23A exactness: PASS (relErr = 0.0001447492909277451 < 0.005)
+  23A DroppedSectors: PASS (count = 3)
+
+23A PASS
+
+--- Test 23B: Test 6 Case A via EvaluateTropicalMCLifted (k=2) ---
+  Computing NIntegrate reference ...
+  NIntegrate reference = 0.0007850074779405956
+  Running EvaluateTropicalMCLifted (explicit k=2, 10^6 samples) ...
+EvaluateTropicalMC: 8 sectors, 1 kinematic points, 3 variables
+Processing 8 sectors...
+  PSL cone 1: pivot p=3 mp=-1 atilde={1., 1.} HasConstantTerm=True
+  PSL cone 2: pivot p=3 mp=1 atilde={2.5, 3.} HasConstantTerm=True
+  PSL cone 3: pivot p=2 mp=1 atilde={2.5, 1.} HasConstantTerm=True
+  PSL cone 4: pivot p=2 mp=1 atilde={4., 1.} HasConstantTerm=True
+  PSL cone 5: pivot p=2 mp=1 atilde={3.25, 7.} HasConstantTerm=True
+  PSL cone 6: pivot p=2 mp=-3/2 atilde={1.5, 2.3333333333333335} HasConstantTerm=True
+  PSL cone 7: pivot p=2 mp=2 atilde={1.75, 0.5} HasConstantTerm=True
+  PSL cone 8: pivot p=3 mp=1 atilde={4., 7.} HasConstantTerm=False
+  6 convergent sectors, 2 EmptyDomain sectors dropped
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp
+  6 convergent sectors
+  Total: 6 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:37:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:58:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:79:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:96:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:117:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_5(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:164:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+7 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc
+Running Monte Carlo (1000000 samples, 12 threads)...
+Read 1 kinematic points
+Done. Processed 1 kinematic points.
+
+
+=== Monte Carlo Error Summary ===
+  Re errors: mean=3.966099206302712*^-6 median=3.966099206302712*^-6 max=3.966099206302712*^-6
+  Im errors: mean=0 median=0 max=0
+  MC value (k=2) = 0.0007815770115386767 +/- 3.966099206302712*^-6
+  Relative deviation = 0.004369979265571454
+  |MC-ref| < 4*stderr: True
+  23B relErr test: PASS (0.004369979265571454 < 0.01)
+  23B error-bar test: PASS
+
+  [Informational] Automatic mode (k* via DetectExtremeCoefficients) ...
+EvaluateTropicalMC: 8 sectors, 1 kinematic points, 3 variables
+Processing 8 sectors...
+  PSL cone 1: pivot p=3 mp=-1 atilde={1., 1.} HasConstantTerm=True
+  PSL cone 2: pivot p=3 mp=1 atilde={2.5, 3.} HasConstantTerm=True
+  PSL cone 3: pivot p=2 mp=1 atilde={2.5, 1.} HasConstantTerm=True
+  PSL cone 4: pivot p=2 mp=1 atilde={4., 1.} HasConstantTerm=True
+  PSL cone 5: pivot p=2 mp=1 atilde={3.25, 7.} HasConstantTerm=True
+  PSL cone 6: pivot p=2 mp=-3/2 atilde={1.5, 2.3333333333333335} HasConstantTerm=True
+  PSL cone 7: pivot p=2 mp=2 atilde={1.75, 0.5} HasConstantTerm=True
+  PSL cone 8: pivot p=3 mp=1 atilde={4., 7.} HasConstantTerm=False
+  6 convergent sectors, 2 EmptyDomain sectors dropped
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp
+  6 convergent sectors
+  Total: 6 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:37:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:58:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:79:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:96:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:117:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_5(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc_generated.cpp:164:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+7 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/EXAMPLES/INTERFILES/tropical_mc
+Running Monte Carlo (1000000 samples, 12 threads)...
+Read 1 kinematic points
+Done. Processed 1 kinematic points.
+
+
+=== Monte Carlo Error Summary ===
+  Re errors: mean=3.966099206302712*^-6 median=3.966099206302712*^-6 max=3.966099206302712*^-6
+  Im errors: mean=0 median=0 max=0
+  Automatic MC value = 0.0007815770115386767 +/- 3.966099206302712*^-6  (informational; no PASS gate)
+
+23B PASS
+
+--- Test 23C: Error paths (liftcomplex, liftnopivot) ---
+  (i) liftcomplex ...
+
+TropicalEval::liftcomplex: ProcessSectorLifted: cone 2 — all candidate pivots produce complex atilde; cannot emit a real-valued domain indicator.  Lift with a different k or check that polynomial exponents B are real.
+
+TropicalEval::liftcomplex: ProcessSectorLifted: cone 3 — all candidate pivots produce complex atilde; cannot emit a real-valued domain indicator.  Lift with a different k or check that polynomial exponents B are real.
+
+TropicalEval::liftcomplex: ProcessSectorLifted: cone 4 — all candidate pivots produce complex atilde; cannot emit a real-valued domain indicator.  Lift with a different k or check that polynomial exponents B are real.
+
+General::stop: Further output of TropicalEval::liftcomplex will be suppressed during this calculation.
+  23C(i) liftcomplex: PASS (message fired, $Failed returned)
+  (ii) liftnopivot ...
+
+TropicalEval::liftnopivot: ProcessSectorLifted: cone 1 — no admissible pivot found.  z-row m={1, 1, 1}, per-pivot atilde={{1, 1, {0., 4.}}, {2, 1, {0., 4.}}, {3, 1, {-4., -4.}}}.  Try a different k in the lift rules; alternatively, the domain constraint may cut off all divergent regions (log-space remap, future work).
+  23C(ii) liftnopivot: PASS (message fired, $Failed returned)
+
+23C PASS
+
+--- Test 23D: Toy 0 k=1 EmptyDomain via package functions ---
+  z0 = 1000000
+  Lifted poly: 1 + x[1]*x[2]
+  Identity check: PASS
+  Explicit fan: 7 rays, 7 sectors
+  Direct NIntegrate = 9.999999999708572*^-7
+  Sector sum        = 1.0000000000186586*^-6
+  Relative error    = 4.7801457346742254*^-11
+  DroppedSectors    = 4
+  23D DroppedSectors: PASS (4 sectors dropped)
+  23D exactness: PASS (relErr = 4.7801457346742254*^-11 < 0.1%)
+
+23D PASS
+
+================================================================
+  Test 23 Summary
+  23A (exactness/DroppedSectors): PASS
+  23B (end-to-end C++):            PASS
+  23C (error paths):               PASS
+  23D (EmptyDomain drops):          PASS
+  Overall Test 23: PASS
+================================================================
+
+
+=======================================================================
+  RUNNING test_vegas.wl (V1-V4, L1-L3)
+=======================================================================
+
+tropical_eval.wl loaded; CUBA at /opt/homebrew
+
+=== V1 A_simplex n=2  (MC 1000000 samples vs VEGAS 200000 maxeval/sector) ===
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  4 convergent sectors
+  Total: 4 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:36:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:52:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:68:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:108:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+5 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  4 convergent sectors
+  Total: 4 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:36:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:52:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:68:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:132:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+5 warnings generated.
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Data.o)) was built for newer macOS version (26.0) than being linked (13.3)
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+  kp 1:
+    MC    = 0.1659  +/- 0.000222
+    VEGAS = 0.166648  +/- 0.000027
+    |MC-VEGAS| = 0.000748  = 3.34 sigma (gate 5)
+    exact = 0.166667
+    relErr: MC = 0.0046 (gate 0.02)   VEGAS = 0.00011 (gate 0.01)
+  PASS  (1 kinematic point)
+
+Polymake error: PROGRESS:Loading polytope...
+polymake: upgrading /private/var/folders/2h/glr3rbwx48df95g826jhx8m80000gp/T/polytope_input_67168_785318.poly from old plain file format
+polymake:  ERROR: "/private/var/folders/2h/glr3rbwx48df95g826jhx8m80000gp/T/polytope_input_67168_785318.poly", line 5: error reading property 'INEQUALITIES': invalid Matrix<Rational, NonSymmetric> value starting at ' $Failed $ ...'
+
+=== V1 A_simplex n=4  (MC 1000000 samples vs VEGAS 200000 maxeval/sector) ===
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  5 convergent sectors
+  Total: 5 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:38:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:56:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:74:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:92:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:135:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+6 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  5 convergent sectors
+  Total: 5 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:38:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:56:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:74:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:92:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:159:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+6 warnings generated.
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Data.o)) was built for newer macOS version (26.0) than being linked (13.3)
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+  kp 1:
+    MC    = 0.00832553  +/- 0.0000119
+    VEGAS = 0.00833316  +/- 2.03e-6
+    |MC-VEGAS| = 7.63e-6  = 0.632 sigma (gate 5)
+    exact = 0.00833333
+    relErr: MC = 0.000936 (gate 0.02)   VEGAS = 0.0000208 (gate 0.01)
+  PASS  (1 kinematic point)
+
+Polymake error: PROGRESS:Loading polytope...
+polymake: upgrading /private/var/folders/2h/glr3rbwx48df95g826jhx8m80000gp/T/polytope_input_67168_785318.poly from old plain file format
+polymake:  ERROR: "/private/var/folders/2h/glr3rbwx48df95g826jhx8m80000gp/T/polytope_input_67168_785318.poly", line 5: error reading property 'INEQUALITIES': invalid Matrix<Rational, NonSymmetric> value starting at ' $Failed $ ...'
+
+=== V2 Af_frac n=4 (sqrt edge)  (MC 3000000 samples vs VEGAS 300000 maxeval/sector) ===
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  5 convergent sectors
+  Total: 5 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:38:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:56:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:74:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:92:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:135:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+6 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  5 convergent sectors
+  Total: 5 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:38:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:56:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:74:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:92:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:159:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+6 warnings generated.
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Data.o)) was built for newer macOS version (26.0) than being linked (13.3)
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+  kp 1:
+    MC    = 0.822086  +/- 0.000756
+    VEGAS = 0.822489  +/- 0.000206
+    |MC-VEGAS| = 0.000403  = 0.515 sigma (gate 6)
+    exact = 0.822467
+    relErr: MC = 0.000464 (gate 0.03)   VEGAS = 0.0000268 (gate 0.01)
+  PASS  (1 kinematic point)
+
+=== V3 complex B, lam scan  (MC 500000 samples vs VEGAS 150000 maxeval/sector) ===
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  4 convergent sectors
+  Total: 4 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:112:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+1 warning generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  4 convergent sectors
+  Total: 4 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:136:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+1 warning generated.
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Data.o)) was built for newer macOS version (26.0) than being linked (13.3)
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+  kp 1 = {0.5}:
+    MC    = 0.687869 - 0.285101*I  +/- 0.000467
+    VEGAS = 0.68834 - 0.285063*I  +/- 0.000401
+    |MC-VEGAS| = 0.000473  = 0.768 sigma (gate 5)
+    NIntegrate = 0.688331 - 0.285061*I
+    relErr: MC = 0.000623 (gate 0.02)   VEGAS = 0.0000129 (gate 0.01)
+  kp 2 = {1.}:
+    MC    = 0.51556 - 0.218932*I  +/- 0.00036
+    VEGAS = 0.515075 - 0.218923*I  +/- 0.000328
+    |MC-VEGAS| = 0.000484  = 0.994 sigma (gate 5)
+    NIntegrate = 0.515069 - 0.218922*I
+    relErr: MC = 0.000877 (gate 0.02)   VEGAS = 0.0000122 (gate 0.01)
+  kp 3 = {2.}:
+    MC    = 0.382021 - 0.166339*I  +/- 0.000349
+    VEGAS = 0.381643 - 0.166323*I  +/- 0.000279
+    |MC-VEGAS| = 0.000378  = 0.845 sigma (gate 5)
+    NIntegrate = 0.381637 - 0.166321*I
+    relErr: MC = 0.000922 (gate 0.02)   VEGAS = 0.000014 (gate 0.01)
+  kp 4 = {4.}:
+    MC    = 0.279945 - 0.125001*I  +/- 0.000345
+    VEGAS = 0.280232 - 0.125022*I  +/- 0.000234
+    |MC-VEGAS| = 0.000287  = 0.69 sigma (gate 5)
+    NIntegrate = 0.280227 - 0.125021*I
+    relErr: MC = 0.00092 (gate 0.02)   VEGAS = 0.000017 (gate 0.01)
+  kp 5 = {8.}:
+    MC    = 0.20382 - 0.0929399*I  +/- 0.000329
+    VEGAS = 0.204127 - 0.0930281*I  +/- 0.000187
+    |MC-VEGAS| = 0.000319  = 0.843 sigma (gate 5)
+    NIntegrate = 0.204123 - 0.0930267*I
+    relErr: MC = 0.0014 (gate 0.02)   VEGAS = 0.0000203 (gate 0.01)
+  PASS  (5 kinematic points)
+
+Polymake error: PROGRESS:Loading polytope...
+polymake: upgrading /private/var/folders/2h/glr3rbwx48df95g826jhx8m80000gp/T/polytope_input_67168_785318.poly from old plain file format
+polymake:  ERROR: "/private/var/folders/2h/glr3rbwx48df95g826jhx8m80000gp/T/polytope_input_67168_785318.poly", line 5: error reading property 'INEQUALITIES': invalid Matrix<Rational, NonSymmetric> value starting at ' $Failed $ ...'
+
+=== V4 coeff batch (n=4, 24 sets)  (MC 300000 samples vs VEGAS 100000 maxeval/sector) ===
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  5 convergent sectors
+  Total: 5 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:135:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+1 warning generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  5 convergent sectors
+  Total: 5 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:159:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+1 warning generated.
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Data.o)) was built for newer macOS version (26.0) than being linked (13.3)
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+  kp 1 = {1., 0.588455, 0.788117, 1.48565, 0.906863}:
+    MC    = 0.0133344  +/- 0.0000466
+    VEGAS = 0.0133371  +/- 5.03e-6
+    |MC-VEGAS| = 2.69e-6  = 0.0573 sigma (gate 5)
+    exact = 0.0133369
+    relErr: MC = 0.000189 (gate 0.02)   VEGAS = 0.000012 (gate 0.01)
+  kp 2 = {1., 0.679105, 0.949589, 1.39546, 1.33732}:
+    MC    = 0.0069086  +/- 0.0000231
+    VEGAS = 0.00692457  +/- 2.88e-6
+    |MC-VEGAS| = 0.000016  = 0.685 sigma (gate 5)
+    exact = 0.0069246
+    relErr: MC = 0.00231 (gate 0.02)   VEGAS = 5.16e-6 (gate 0.01)
+  kp 3 = {1., 1.50272, 0.575797, 0.845875, 0.809756}:
+    MC    = 0.0141268  +/- 0.0000458
+    VEGAS = 0.0140607  +/- 5.31e-6
+    |MC-VEGAS| = 0.0000661  = 1.43 sigma (gate 5)
+    exact = 0.0140609
+    relErr: MC = 0.00469 (gate 0.02)   VEGAS = 0.0000111 (gate 0.01)
+  kp 4 = {1., 1.06589, 1.38132, 1.35012, 1.06749}:
+    MC    = 0.00390657  +/- 0.000014
+    VEGAS = 0.00392709  +/- 1.76e-6
+    |MC-VEGAS| = 0.0000205  = 1.46 sigma (gate 5)
+    exact = 0.00392714
+    relErr: MC = 0.00524 (gate 0.02)   VEGAS = 0.000014 (gate 0.01)
+  kp 5 = {1., 0.688552, 1.13532, 0.60915, 1.2046}:
+    MC    = 0.0144665  +/- 0.0000457
+    VEGAS = 0.0145276  +/- 5.36e-6
+    |MC-VEGAS| = 0.0000611  = 1.33 sigma (gate 5)
+    exact = 0.0145276
+    relErr: MC = 0.0042 (gate 0.02)   VEGAS = 8.05e-8 (gate 0.01)
+  kp 6 = {1., 1.41221, 0.566895, 0.901755, 0.644714}:
+    MC    = 0.0179073  +/- 0.0000617
+    VEGAS = 0.0179044  +/- 6.69e-6
+    |MC-VEGAS| = 2.95e-6  = 0.0475 sigma (gate 5)
+    exact = 0.0179045
+    relErr: MC = 0.000156 (gate 0.02)   VEGAS = 9.19e-6 (gate 0.01)
+  kp 7 = {1., 1.36261, 1.82365, 0.575652, 0.805429}:
+    MC    = 0.00720609  +/- 0.0000312
+    VEGAS = 0.00723301  +/- 3.37e-6
+    |MC-VEGAS| = 0.0000269  = 0.857 sigma (gate 5)
+    exact = 0.00723297
+    relErr: MC = 0.00372 (gate 0.02)   VEGAS = 5.e-6 (gate 0.01)
+  kp 8 = {1., 1.60035, 1.3816, 0.943977, 1.83172}:
+    MC    = 0.00216852  +/- 0.0000109
+    VEGAS = 0.00217982  +/- 1.21e-6
+    |MC-VEGAS| = 0.0000113  = 1.03 sigma (gate 5)
+    exact = 0.00217972
+    relErr: MC = 0.00513 (gate 0.02)   VEGAS = 0.000048 (gate 0.01)
+  kp 9 = {1., 0.762012, 0.96949, 1.0439, 0.834012}:
+    MC    = 0.0129918  +/- 0.0000311
+    VEGAS = 0.0129562  +/- 4.1e-6
+    |MC-VEGAS| = 0.0000356  = 1.13 sigma (gate 5)
+    exact = 0.0129563
+    relErr: MC = 0.00274 (gate 0.02)   VEGAS = 8.98e-6 (gate 0.01)
+  kp 10 = {1., 1.06134, 0.537246, 0.903672, 0.689267}:
+    MC    = 0.0233878  +/- 0.0000679
+    VEGAS = 0.0234626  +/- 8.3e-6
+    |MC-VEGAS| = 0.0000748  = 1.09 sigma (gate 5)
+    exact = 0.0234634
+    relErr: MC = 0.00322 (gate 0.02)   VEGAS = 0.0000356 (gate 0.01)
+  kp 11 = {1., 1.63453, 0.981149, 1.49518, 0.812947}:
+    MC    = 0.00425899  +/- 0.0000159
+    VEGAS = 0.00427502  +/- 1.93e-6
+    |MC-VEGAS| = 0.000016  = 0.999 sigma (gate 5)
+    exact = 0.00427499
+    relErr: MC = 0.00374 (gate 0.02)   VEGAS = 6.86e-6 (gate 0.01)
+  kp 12 = {1., 1.06722, 1.1516, 1.36402, 0.52472}:
+    MC    = 0.00955421  +/- 0.0000503
+    VEGAS = 0.00947305  +/- 4.52e-6
+    |MC-VEGAS| = 0.0000812  = 1.61 sigma (gate 5)
+    exact = 0.00947357
+    relErr: MC = 0.00851 (gate 0.02)   VEGAS = 0.0000545 (gate 0.01)
+  kp 13 = {1., 0.657002, 0.641934, 1.11082, 1.30407}:
+    MC    = 0.0136799  +/- 0.0000415
+    VEGAS = 0.01364  +/- 5.05e-6
+    |MC-VEGAS| = 0.0000399  = 0.956 sigma (gate 5)
+    exact = 0.0136401
+    relErr: MC = 0.00292 (gate 0.02)   VEGAS = 6.8e-6 (gate 0.01)
+  kp 14 = {1., 1.51076, 1.67794, 0.683553, 1.12965}:
+    MC    = 0.00427662  +/- 0.0000186
+    VEGAS = 0.00425722  +/- 2.07e-6
+    |MC-VEGAS| = 0.0000194  = 1.03 sigma (gate 5)
+    exact = 0.00425727
+    relErr: MC = 0.00455 (gate 0.02)   VEGAS = 0.0000115 (gate 0.01)
+  kp 15 = {1., 0.57405, 0.902398, 1.37149, 1.24292}:
+    MC    = 0.0094138  +/- 0.0000353
+    VEGAS = 0.00943704  +/- 4.08e-6
+    |MC-VEGAS| = 0.0000232  = 0.654 sigma (gate 5)
+    exact = 0.00943708
+    relErr: MC = 0.00247 (gate 0.02)   VEGAS = 3.82e-6 (gate 0.01)
+  kp 16 = {1., 0.638696, 0.550673, 1.89129, 0.597361}:
+    MC    = 0.0210195  +/- 0.000078
+    VEGAS = 0.0209716  +/- 7.95e-6
+    |MC-VEGAS| = 0.0000479  = 0.611 sigma (gate 5)
+    exact = 0.0209718
+    relErr: MC = 0.00227 (gate 0.02)   VEGAS = 9.64e-6 (gate 0.01)
+  kp 17 = {1., 1.33246, 1.29566, 0.974747, 1.32932}:
+    MC    = 0.00371395  +/- 0.0000136
+    VEGAS = 0.00372517  +/- 1.72e-6
+    |MC-VEGAS| = 0.0000112  = 0.817 sigma (gate 5)
+    exact = 0.0037252
+    relErr: MC = 0.00302 (gate 0.02)   VEGAS = 7.36e-6 (gate 0.01)
+  kp 18 = {1., 0.747829, 0.980109, 1.25513, 1.94584}:
+    MC    = 0.00467109  +/- 0.0000185
+    VEGAS = 0.00465524  +/- 2.08e-6
+    |MC-VEGAS| = 0.0000159  = 0.851 sigma (gate 5)
+    exact = 0.00465527
+    relErr: MC = 0.0034 (gate 0.02)   VEGAS = 6.73e-6 (gate 0.01)
+  kp 19 = {1., 0.802998, 0.872836, 0.534764, 1.13841}:
+    MC    = 0.0194952  +/- 0.0000621
+    VEGAS = 0.0195303  +/- 7.22e-6
+    |MC-VEGAS| = 0.000035  = 0.56 sigma (gate 5)
+    exact = 0.0195303
+    relErr: MC = 0.0018 (gate 0.02)   VEGAS = 4.22e-6 (gate 0.01)
+  kp 20 = {1., 1.15986, 0.798726, 0.648393, 1.13142}:
+    MC    = 0.0122378  +/- 0.0000365
+    VEGAS = 0.0122616  +/- 4.36e-6
+    |MC-VEGAS| = 0.0000238  = 0.648 sigma (gate 5)
+    exact = 0.0122618
+    relErr: MC = 0.00196 (gate 0.02)   VEGAS = 0.0000155 (gate 0.01)
+  kp 21 = {1., 1.48651, 1.00133, 1.90371, 1.22947}:
+    MC    = 0.00241058  +/- 0.0000117
+    VEGAS = 0.00239192  +/- 1.27e-6
+    |MC-VEGAS| = 0.0000187  = 1.59 sigma (gate 5)
+    exact = 0.00239198
+    relErr: MC = 0.00778 (gate 0.02)   VEGAS = 0.000025 (gate 0.01)
+  kp 22 = {1., 1.17995, 0.791459, 1.14167, 1.08547}:
+    MC    = 0.00720359  +/- 0.0000211
+    VEGAS = 0.00720049  +/- 2.74e-6
+    |MC-VEGAS| = 3.1e-6  = 0.146 sigma (gate 5)
+    exact = 0.0072006
+    relErr: MC = 0.000416 (gate 0.02)   VEGAS = 0.0000148 (gate 0.01)
+  kp 23 = {1., 0.528724, 1.06262, 1.00951, 0.551219}:
+    MC    = 0.0266973  +/- 0.0000964
+    VEGAS = 0.026654  +/- 0.0000102
+    |MC-VEGAS| = 0.0000433  = 0.446 sigma (gate 5)
+    exact = 0.0266549
+    relErr: MC = 0.00159 (gate 0.02)   VEGAS = 0.0000342 (gate 0.01)
+  kp 24 = {1., 0.775863, 0.984236, 0.516431, 1.9595}:
+    MC    = 0.0106529  +/- 0.0000455
+    VEGAS = 0.0107839  +/- 4.91e-6
+    |MC-VEGAS| = 0.000131  = 2.86 sigma (gate 5)
+    exact = 0.0107839
+    relErr: MC = 0.0121 (gate 0.02)   VEGAS = 7.34e-6 (gate 0.01)
+  PASS  (24 kinematic points)
+
+=== L1 lifted, LARGE coeff 1e6 (k=2)   (NIntegrate ref = 0.0007850075) ===
+    lifted, MC 2000000 samples vs VEGAS 2000000 maxeval/sector
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  6 convergent sectors
+  Total: 6 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:37:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:58:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:79:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:96:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:117:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_5(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:164:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+7 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  6 convergent sectors
+  Total: 6 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:37:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:58:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:79:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:96:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:117:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_5(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:188:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+7 warnings generated.
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Data.o)) was built for newer macOS version (26.0) than being linked (13.3)
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+    lifted-MC    = 0.0007873984 +/- 2.9e-6   relErr = 0.00305
+    lifted-VEGAS = 0.0007774873 +/- 1.9e-7   relErr = 0.00958  (VEGAS codegen reached: True)
+    more accurate: MC   (expected MC)   [error bars optimistic in this regime; cutoff bias shrinks w/ budget]
+  PASS
+
+=== L2 lifted, small coeff 1e-4 (k=2)   (NIntegrate ref = 13.09009) ===
+    lifted, MC 2000000 samples vs VEGAS 2000000 maxeval/sector
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  8 convergent sectors
+  Total: 8 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:41:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:62:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:79:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:100:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:121:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_5(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:142:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_6(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:159:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_7(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:208:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+9 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  8 convergent sectors
+  Total: 8 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:41:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:62:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:79:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:100:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:121:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_5(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:142:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_6(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:159:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_7(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:232:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+9 warnings generated.
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Data.o)) was built for newer macOS version (26.0) than being linked (13.3)
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+    lifted-MC    = 12.93321 +/- 0.22   relErr = 0.012
+    lifted-VEGAS = 13.04553 +/- 0.0049   relErr = 0.0034  (VEGAS codegen reached: True)
+    more accurate: VEGAS   (expected VEGAS)   [error bars optimistic in this regime; cutoff bias shrinks w/ budget]
+  PASS
+
+=== L3 lifted, small coeff 1e-6 (k=2)   (NIntegrate ref = 44.50941) ===
+    lifted, MC 2000000 samples vs VEGAS 2000000 maxeval/sector
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  8 convergent sectors
+  Total: 8 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:41:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:62:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:79:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:100:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:121:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_5(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:142:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_6(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:159:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_7(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:208:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+9 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp
+  8 convergent sectors
+  Total: 8 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -I/opt/homebrew/include -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp -L/opt/homebrew/lib -lcuba -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:41:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:62:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:79:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:100:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:121:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_5(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:142:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_6(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:159:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_7(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc_generated.cpp:232:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+9 warnings generated.
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Vegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llVegas_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Suave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llSuave_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Divonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llDivonne_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Cuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(llCuhre_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Fork_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Global_.o)) was built for newer macOS version (26.0) than being linked (13.3)
+ld: warning: object file (/opt/homebrew/lib/libcuba.a(Data.o)) was built for newer macOS version (26.0) than being linked (13.3)
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/OLD_CODE/TROPICAL_MONTE_CARLO2/TROPICAL_MONTE_CARLOv2/INTERFILES/tropical_mc
+    lifted-MC    = 38.58832 +/- 0.53   relErr = 0.133
+    lifted-VEGAS = 43.27258 +/- 0.02   relErr = 0.0278  (VEGAS codegen reached: True)
+    more accurate: VEGAS   (expected VEGAS)   [error bars optimistic in this regime; cutoff bias shrinks w/ budget]
+  PASS
+
+================================================================
+  MC vs VEGAS parity summary (8 cases)
+================================================================
+  V1 A_simplex n=2                    PASS
+  V1 A_simplex n=4                    PASS
+  V2 Af_frac n=4 (sqrt edge)          PASS
+  V3 complex B, lam scan              PASS
+  V4 coeff batch (n=4, 24 sets)       PASS
+  L1 lifted, LARGE coeff 1e6 (k=2)    PASS   [winner: MC]
+  L2 lifted, small coeff 1e-4 (k=2)   PASS   [winner: VEGAS]
+  L3 lifted, small coeff 1e-6 (k=2)   PASS   [winner: VEGAS]
+----------------------------------------------------------------
+  8 PASSED, 0 FAILED
+================================================================
+
+=======================================================================
+TREE B GOLDEN CAPTURE COMPLETE â ended: Thu 25 Jun 2026 12:11:21
+=======================================================================
