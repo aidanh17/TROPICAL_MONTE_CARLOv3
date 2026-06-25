@@ -138,6 +138,59 @@ Options: NSamples, NThreads, RunChecks, Verbose, WorkingDirectory, and the \
 sampler options \"Integrator\" (\"MonteCarlo\"|\"Vegas\"), \"VegasEpsRel\", \
 \"VegasEpsAbs\", \"VegasSeed\" (Vegas needs the optional CUBA library).";
 
+(* ---- Lifting (Module 1b/1c, plan.md §6.2) ---- *)
+
+DetectExtremeCoefficients::usage =
+  "DetectExtremeCoefficients[integrandSpec, threshold:1000, opts] scans every \
+polynomial for numeric coefficients outside [1/threshold, threshold] and \
+returns a list of <|\"PolyIndex\"->j, \"ExponentVector\"->alpha, \
+\"Coefficient\"->C, \"Magnitude\"->Abs[C], \"SuggestedK\"->kStar|>. \
+Symbolic/kinematic coefficients are skipped (magnitude unknown). SuggestedK \
+automates the anchor z0=Abs[C]^(1/k): with \"AnchorRule\"->\"kStar\" (default) \
+it returns kStar=Max[1,Ceiling[Abs[Log[Abs[C]]]/Log[threshold]]] -- the \
+smallest k that pulls z0 back inside the non-extreme band [1/threshold, \
+threshold] (plan.md §6.2). \"AnchorRule\"->\"Unit\" recovers the legacy \
+SuggestedK->1; a function f is called as f[mag, threshold]. \
+\"BandEdgeGuard\"->False.";
+
+LiftCoefficients::usage =
+  "LiftCoefficients[integrandSpec, liftRules] applies auxiliary-variable \
+lifting: each rule <|\"PolyIndex\"->j, \"ExponentVector\"->alpha, \"k\"->k|> \
+replaces the extreme monomial C x^alpha by c z^k x^alpha with residual \
+c=C/z0^k and shared anchor z0=Abs[Cprimary]^(1/kprimary) (kept EXACT). Returns \
+<|\"LiftedSpec\"->..., \"LiftData\"->...|>. The aux variable is built robustly \
+for plain-symbol specs (BUG-2 fix); the z->z0 round-trip identity is checked \
+with relative tolerance.";
+
+ProcessSectorLifted::usage =
+  "ProcessSectorLifted[liftedSpec, dualVertices, simplex, coneIndex, \
+liftData, opts] runs the full delta-resolution pipeline (plan.md §6.2) for one \
+sector of a lifted (n+1)-dim integrand: standard ProcessSector, then pivot \
+search (ranking: HasConstantTerm, |m_p|=1, max min Re atilde), domain-constraint \
+classification, and FlattenSector. Returns a SectorData association augmented \
+with DomainConstraint, LiftData, PivotIndex, ZRow, AugmentedA, HasConstantTerm; \
+or <|\"EmptyDomain\"->True, \"ConeIndex\"->...|> for an empty domain; or $Failed \
+with liftcomplex/liftnopivot/liftdivergent.";
+
+ValidateLiftedDecomposition::usage =
+  "ValidateLiftedDecomposition[originalSpec, liftedSpec, liftedFanData, \
+liftData, testKinematics, precisionGoal:3] cross-checks the lifted sector sum \
+against a direct NIntegrate of the ORIGINAL integrand. Sectors via \
+ProcessSectorLifted; EmptyDomain sectors contribute 0 and are listed under \
+DroppedSectors. This EXACT NIntegrate gate (not the sampled 5sigma) is the \
+lifting correctness check (plan.md §9 risk #1). Returns <|DirectResult, \
+SectorSum, RelativeError, SectorResults, DroppedSectors|>.";
+
+EvaluateTropicalMCLifted::usage =
+  "EvaluateTropicalMCLifted[integrandSpec, kinematicPoints, opts] is a thin \
+wrapper that detects/applies lifting (\"LiftRules\"->Automatic uses \
+DetectExtremeCoefficients), builds the (n+1)-dim lifted fan (\"FanData\"-> \
+Automatic, K-scaled robust path), and routes through EvaluateTropicalMC with \
+LiftData. With no extreme coefficients it falls back to plain EvaluateTropicalMC. \
+Options: \"LiftRules\"->Automatic, \"Threshold\"->1000, \"AnchorRule\"->\"kStar\", \
+\"BandEdgeGuard\"->False, \"FanData\"->Automatic, plus all EvaluateTropicalMC \
+options.";
+
 (* ---- Error messages ---- *)
 
 TropicalEval::degenerate = "Sector `1`: degenerate cone, det(M) = 0.";
@@ -148,6 +201,15 @@ TropicalEval::badck = "Sector `1`: c_k = 0 for divergent variable y_`2`. Higher-
 TropicalEval::nestedIBP = "Sector `1`: `2` divergent variables. The IBP numerical path assembles a single 1/eps pole per sector; nested / higher-order poles (1/eps^d, d>=2) are not implemented in EvaluateTropicalMCIBP. Refusing this sector ($Failed) rather than dividing by a vanishing effective exponent and emitting invalid C++.";
 TropicalEval::badcpp = "Code generation produced non-compilable C++ (offending tokens: `1`). This indicates an unsupported sector (e.g. a nested divergence leaking ComplexInfinity/Indeterminate, or an unconverted symbolic head). Returning $Failed instead of writing C++ that g++ cannot compile.";
 TropicalEval::validate = "Validation `1`: relative error `2` exceeds tolerance `3`.";
+
+(* ---- Lifting error messages (plan.md §6.2) ---- *)
+TropicalEval::liftidentity = "LiftCoefficients: round-trip identity check FAILED for polynomial `1`; lifted poly at z->z0 does not match original (relative residual `2`).";
+TropicalEval::liftbadvar = "LiftCoefficients: cannot build a valid auxiliary variable from the spec variables `1` (BUG-2: Head[plainSymbol][n+1] yields the invalid Symbol[n+1]).  Use indexed variables x[i], or the aux variable could not be made fresh.  Returning $Failed.";
+TropicalEval::liftnopivot = "ProcessSectorLifted: cone `1` — no admissible pivot found.  z-row m=`2`, per-pivot atilde=`3`.  Try a different k in the lift rules; alternatively the domain constraint may cut off all divergent regions (log-space remap, future work).";
+TropicalEval::liftcomplex = "ProcessSectorLifted: cone `1` — all candidate pivots produce complex atilde; cannot emit a real-valued domain indicator.  Lift with a different k or check that polynomial exponents B are real.";
+TropicalEval::liftdivergent = "ProcessSectorLifted: cone `1` — atilde `2` has a non-positive component after delta resolution; the lifted sector is divergent.  Lifting supports convergent integrals only (plan.md N3).";
+TropicalEval::liftfandim = "EvaluateTropicalMC with LiftData: the fan dimension is `1` but n+1 = `2` is required.  Supply the (n+1)-dimensional lifted fan.";
+TropicalEval::liftdegenerate = "EvaluateTropicalMCLifted: the lifted Newton polytope is lower-dimensional; automatic fan construction is not possible — supply an explicit complete simplicial fan via the \"FanData\" option.";
 
 (* ============================================================================
    PRIVATE IMPLEMENTATION
@@ -438,7 +500,7 @@ CheckFlatteningMagnitude[sectorData_Association, nSamples_Integer: 20,
                          testKinematics_List: {}] :=
 Module[
   {flatPolys, polyExps, prefactor, dim, mags, y, polyVals, integrandVal,
-   kinRules},
+   kinRules, dc},
 
   If[sectorData["IsDivergent"],
     Print["CheckFlatteningMagnitude: sector ", sectorData["ConeIndex"],
@@ -451,6 +513,45 @@ Module[
   prefactor = sectorData["Prefactor"];
   dim       = sectorData["Dimension"];
   kinRules  = If[testKinematics === {}, {}, testKinematics];
+  dc        = Lookup[sectorData, "DomainConstraint", None];
+
+  (* Lifted-sector path: rejection-sample only feasible points (plan.md §6.2). *)
+  If[dc =!= None,
+    Module[{logZ0num, mpNum, icNum, feasibleMags, totalDraws, feasibleCount,
+            maxDraws, isFeasible, logYpStar, mag, meanMag, maxMag, minMag, ff},
+      logZ0num = N[dc["LogZ0"]];  mpNum = N[dc["MP"]];  icNum = N[dc["IndicatorCoeffs"]];
+      maxDraws = 50 * nSamples;  feasibleMags = {};  totalDraws = 0;  feasibleCount = 0;
+      While[feasibleCount < nSamples && totalDraws < maxDraws,
+        y = RandomReal[{0.01, 0.99}, dim];  totalDraws++;
+        logYpStar = (logZ0num - Total[icNum * Log[y]]) / mpNum;
+        isFeasible = (logYpStar <= 0);
+        If[isFeasible,
+          polyVals = Table[
+            Total[Table[
+              Module[{coeff = mono[[1]] /. kinRules, alphas = mono[[2]] /. kinRules,
+                      logY2 = Log[y]}, coeff * Exp[Total[alphas * logY2]]],
+              {mono, flatPolys[[j]]}]],
+            {j, Length[flatPolys]}];
+          integrandVal = (prefactor /. kinRules) *
+            Times @@ MapThread[Exp[#2 * Log[#1]] &, {polyVals, polyExps /. kinRules}];
+          AppendTo[feasibleMags, Abs[integrandVal]];  feasibleCount++
+        ]
+      ];
+      If[feasibleCount == 0,
+        Print["WARNING: CheckFlatteningMagnitude sector ", sectorData["ConeIndex"],
+              ": ZERO feasible points in ", totalDraws, " draws."];
+        Return[<|"Mean" -> 0, "Max" -> 0, "Min" -> 0, "Samples" -> {}, "FeasibleFraction" -> 0|>]
+      ];
+      meanMag = Mean[feasibleMags];  maxMag = Max[feasibleMags];  minMag = Min[feasibleMags];
+      ff = N[feasibleCount / totalDraws];
+      If[maxMag > 10^3 || minMag < 10^(-6),
+        Print["WARNING: Sector ", sectorData["ConeIndex"],
+              " flattening check: min=", minMag, " max=", maxMag,
+              " mean=", meanMag, " feasibleFrac=", ff]];
+      Return[<|"Mean" -> meanMag, "Max" -> maxMag, "Min" -> minMag,
+               "Samples" -> feasibleMags, "FeasibleFraction" -> ff|>]
+    ]
+  ];
 
   mags = Table[
     y = RandomReal[{0.01, 0.99}, dim];
@@ -597,6 +698,600 @@ Module[
 
 (* The hard-coded 2D benchmark unit test was removed in v3
    (plan.md §5.6 — dead code in both old trees). *)
+
+
+(* ============================================================================
+   MODULE 1b: LIFTING  (auxiliary-variable uplift for extreme coefficients)
+   Ported from Tree B (TROPICAL_MONTE_CARLOv2) with the plan.md §6.2 fixes:
+     - BUG-2 aux-variable robustness (no Symbol[n+1] for plain-symbol specs);
+     - relative-tolerance liftidentity check (no false-positive on float z0);
+     - SuggestedK -> kStar geometry-band anchor (already in the Tree B copy);
+     - §6.7 exactness: pivot realness decided exactly (PossibleZeroQ), not by a
+       10^-12 tolerance.
+   ============================================================================ *)
+
+(* --------------------------------------------------------------------------
+   makeAuxVar — BUG-2 fix (plan.md §6.2).
+   Build a guaranteed-VALID, fresh auxiliary variable of the same indexed
+   "head[idx]" form as the existing variables.  Tree B used
+   Head[vars[[1]]][auxIdx], which for a plain symbol x gives Head[x]=Symbol and
+   Symbol[4] — an invalid expression that triggers Symbol::string.  Here we
+   require the spec variables to be indexed (head[_]); if they are plain
+   symbols we fire liftbadvar and signal failure (None).
+   -------------------------------------------------------------------------- *)
+makeAuxVar[vars_List, auxIdx_Integer] := Module[{heads, h},
+  (* Each variable must be of the form head[index] with a symbol head. *)
+  If[!AllTrue[vars, (MatchQ[#, _Symbol[_]] && Head[Head[#]] === Symbol) &],
+    Return[None]
+  ];
+  heads = Head /@ vars;            (* e.g. {x, x} *)
+  h = First[heads];
+  (* Use the common head when all variables share it; otherwise the first. *)
+  If[!AllTrue[heads, # === h &], h = First[heads]];
+  h[auxIdx]
+];
+
+(* --------------------------------------------------------------------------
+   DetectExtremeCoefficients
+   Scan every polynomial for numeric coefficients outside [1/threshold,
+   threshold].  Returns a list of flagged-monomial associations.
+   Symbolic/kinematic coefficients are silently skipped (magnitude unknown).
+   SuggestedK -> kStar (plan.md §6.2 / AUXT/anchor_selection_procedure.md).
+   -------------------------------------------------------------------------- *)
+
+Options[DetectExtremeCoefficients] = {
+  "AnchorRule"    -> "kStar",
+  "BandEdgeGuard" -> False
+};
+
+(* Two definitions so the optional numeric threshold is never confused with a
+   trailing option rule. *)
+DetectExtremeCoefficients[integrandSpec_Association, opts : OptionsPattern[]] :=
+  DetectExtremeCoefficients[integrandSpec, 1000, opts];
+
+DetectExtremeCoefficients[integrandSpec_Association, threshold_?NumericQ,
+                          opts : OptionsPattern[]] :=
+Module[
+  {polys, vars, result, parsedPoly, coeff, mag,
+   anchorRule, bandEdgeGuard, logTau, suggestK},
+
+  polys  = integrandSpec["Polynomials"];
+  vars   = integrandSpec["Variables"];
+  result = {};
+
+  anchorRule    = OptionValue["AnchorRule"];
+  bandEdgeGuard = TrueQ[OptionValue["BandEdgeGuard"]];
+  logTau        = Log[N[threshold]];
+
+  (* kStar = max(1, ceil(|log|C|| / log threshold)) — the smallest k that pulls
+     z0 = |C|^(1/k) back inside the detector's non-extreme band [1/tau, tau]
+     (plan.md §6.2).  This is a heuristic SELECTOR only: correctness is
+     independent of the choice (the lift is an exact identity for any k). *)
+  suggestK[m_] := Switch[anchorRule,
+    "Unit",  1,
+    "kStar",
+      Module[{absLog = Abs[Log[N[m]]], kS},
+        kS = Max[1, Ceiling[absLog / logTau]];
+        If[bandEdgeGuard && absLog <= logTau + Log[10.] (1 + 1.*^-8),
+          kS = kS + 1
+        ];
+        kS
+      ],
+    _, anchorRule[m, threshold]
+  ];
+
+  Do[
+    parsedPoly = ParsePolynomial[polys[[j]], vars];
+    Do[
+      coeff = mono[[1]];
+      (* Skip symbolic / kinematic coefficients *)
+      If[NumericQ[N[coeff]],
+        mag = Abs[N[coeff]];
+        If[mag < 1/threshold || mag > threshold,
+          AppendTo[result, <|
+            "PolyIndex"      -> j,
+            "ExponentVector" -> mono[[2]],
+            "Coefficient"    -> coeff,
+            "Magnitude"      -> mag,
+            "SuggestedK"     -> suggestK[mag]
+          |>]
+        ]
+      ],
+      {mono, parsedPoly}
+    ],
+    {j, Length[polys]}
+  ];
+
+  result
+];
+
+
+(* --------------------------------------------------------------------------
+   LiftCoefficients
+   Apply auxiliary-variable lifting (plan.md §6.2).
+   liftRules = { <|"PolyIndex"->j, "ExponentVector"->alpha, "k"->k|>, ... }
+   Returns <|"LiftedSpec"->..., "LiftData"->...|> (or $Failed).
+   z0 = |C_primary|^(1/k_primary) kept EXACT; residual c_i = C_i / z0^{k_i}.
+   -------------------------------------------------------------------------- *)
+
+LiftCoefficients[integrandSpec_Association, liftRules_List] :=
+Module[
+  {polys, vars, monoExps, polyExps, kinSyms,
+   n, auxIdx, auxVar, newVars, newMonoExps,
+   parsedPolys, ruleCoeffs, ruleLogMags, primaryIdx, primaryRule,
+   Cprimary, kprimary, z0, residuals,
+   liftedPolys, j, liftedSpec, liftData,
+   liftedSubbed, original, relResid},
+
+  polys    = integrandSpec["Polynomials"];
+  vars     = integrandSpec["Variables"];
+  monoExps = integrandSpec["MonomialExponents"];
+  polyExps = integrandSpec["PolynomialExponents"];
+  kinSyms  = integrandSpec["KinematicSymbols"];
+  n        = Length[vars];
+  auxIdx   = n + 1;
+
+  (* BUG-2 fix: build a valid indexed aux variable; fail cleanly otherwise. *)
+  auxVar = makeAuxVar[vars, auxIdx];
+  If[auxVar === None,
+    Message[TropicalEval::liftbadvar, vars];
+    Return[$Failed]
+  ];
+
+  (* ---- Find the primary rule (max |Log[|C|]|) ---- *)
+  parsedPolys = ParsePolynomial[#, vars] & /@ polys;
+
+  ruleCoeffs = Table[
+    Module[{j0 = r["PolyIndex"], alpha = r["ExponentVector"], matchPos},
+      matchPos = Position[parsedPolys[[j0, All, 2]], alpha];
+      If[matchPos === {},
+        Print["LiftCoefficients: monomial ", alpha,
+              " not found in polynomial ", j0, "."];
+        Return[$Failed]
+      ];
+      parsedPolys[[j0, matchPos[[1, 1]], 1]]
+    ],
+    {r, liftRules}
+  ];
+  If[MemberQ[ruleCoeffs, $Failed], Return[$Failed]];
+
+  ruleLogMags = Abs[Log[Abs[N[#]]]] & /@ ruleCoeffs;
+  primaryIdx  = First@Ordering[ruleLogMags, -1];
+  primaryRule = liftRules[[primaryIdx]];
+  Cprimary    = ruleCoeffs[[primaryIdx]];
+  kprimary    = primaryRule["k"];
+
+  (* z0 = |C_primary|^(1/k_primary), EXACT.  Sign/phase goes into residual. *)
+  z0 = If[IntegerQ[Abs[Cprimary]^(1/kprimary)],
+    Abs[Cprimary]^(1/kprimary),
+    Power[Abs[Cprimary], 1/kprimary]
+  ];
+
+  (* ---- Residuals: c_i = C_i / z0^{k_i} (exact) ---- *)
+  residuals = Table[
+    Simplify[ruleCoeffs[[i]] / z0^liftRules[[i]]["k"]],
+    {i, Length[liftRules]}
+  ];
+
+  (* ---- Build lifted polynomials ---- *)
+  liftedPolys = Table[
+    Module[{acc = polys[[polyJ]]},
+      Do[
+        Module[{r = liftRules[[ri]], alpha, ki, Ci, ci,
+                termToReplace, replacement},
+          If[r["PolyIndex"] == polyJ,
+            alpha = r["ExponentVector"];
+            ki    = r["k"];
+            ci    = residuals[[ri]];
+            Ci    = ruleCoeffs[[ri]];
+            termToReplace = Ci * Times @@ MapThread[
+              Function[{v, e}, If[e == 0, 1, Power[v, e]]], {vars, alpha}];
+            replacement = ci * auxVar^ki * Times @@ MapThread[
+              Function[{v, e}, If[e == 0, 1, Power[v, e]]], {vars, alpha}];
+            acc = Expand[acc - termToReplace + replacement];
+          ]
+        ],
+        {ri, Length[liftRules]}
+      ];
+      acc
+    ],
+    {polyJ, Length[polys]}
+  ];
+
+  newVars     = Append[vars, auxVar];
+  newMonoExps = Append[monoExps, 0];
+
+  liftedSpec = <|
+    "Polynomials"         -> liftedPolys,
+    "MonomialExponents"   -> newMonoExps,
+    "PolynomialExponents" -> polyExps,
+    "Variables"           -> newVars,
+    "KinematicSymbols"    -> kinSyms,
+    "RegulatorSymbol"     -> Lookup[integrandSpec, "RegulatorSymbol", None]
+  |>;
+
+  (* ---- Identity check (plan.md §6.2 rel-tolerance fix) ----
+     liftedPolys /. auxVar -> z0 must reproduce the original.  Exact-match
+     first; if symbols differ only by an exact rewrite, fall back to a RELATIVE
+     residual test (NOT Simplify[...]===0, which false-positives on float z0). *)
+  Do[
+    liftedSubbed = Expand[liftedPolys[[j]] /. auxVar -> z0];
+    original     = Expand[polys[[j]]];
+    If[!TrueQ[liftedSubbed === original],
+      If[!TrueQ[PossibleZeroQ[liftedSubbed - original]],
+        (* numeric relative residual at a generic sample point *)
+        relResid = Module[{diff = liftedSubbed - original, sub, num, den},
+          sub = Thread[vars -> Table[1.7 + 0.37 i, {i, Length[vars]}]];
+          num = Abs[N[diff /. sub]];
+          den = Abs[N[original /. sub]] + Abs[N[liftedSubbed /. sub]] + 1;
+          num / den
+        ];
+        If[!(NumericQ[relResid] && relResid < 10.^-8),
+          Message[TropicalEval::liftidentity, j, relResid]
+        ]
+      ]
+    ],
+    {j, Length[polys]}
+  ];
+
+  liftData = <|
+    "z0"           -> z0,
+    "AuxVariable"  -> auxVar,
+    "AuxIndex"     -> auxIdx,
+    "Rules"        -> liftRules,
+    "Residuals"    -> residuals,
+    "OriginalSpec" -> integrandSpec
+  |>;
+
+  <|"LiftedSpec" -> liftedSpec, "LiftData" -> liftData|>
+];
+
+
+(* ============================================================================
+   MODULE 1c: ProcessSectorLifted
+   Delta-resolution pipeline (plan.md §6.2) for one sector of a lifted
+   integrand.  tryPivot[p] is cached (memoized) so each pivot is computed once.
+   ============================================================================ *)
+
+Options[ProcessSectorLifted] = {"Verbose" -> False};
+
+ProcessSectorLifted[liftedSpec_Association, dualVertices_List,
+                    simplex_List, coneIndex_Integer,
+                    liftData_Association, OptionsPattern[]] :=
+Module[
+  {sdAug, z0, auxIdx, a, clearedPolys, detM, mMatrix, polyExps, n1, n,
+   mVec, verbose, tryPivot, pivotCache, candidates, bestPivot,
+   pivotP, mp, ap, mOtherVec, atildeVals, reclearedPolys,
+   allOtherZero, domainClass, logZ0,
+   fsResult, flattenedPolys, prefactor, prefactorBase,
+   isRealPos},
+
+  verbose = OptionValue["Verbose"];
+
+  (* --- Step 1: standard (n+1)-dim ProcessSector --- *)
+  sdAug = ProcessSector[liftedSpec, dualVertices, simplex, coneIndex];
+  If[sdAug === $Failed, Return[$Failed]];
+
+  z0           = liftData["z0"];
+  auxIdx       = liftData["AuxIndex"];
+  a            = sdAug["NewExponents"];     (* length n+1 *)
+  clearedPolys = sdAug["ClearedPolys"];
+  detM         = sdAug["DetM"];
+  mMatrix      = sdAug["RayMatrix"];
+  polyExps     = sdAug["PolynomialExponents"];
+
+  n1 = Length[a];   (* n+1 *)
+  n  = n1 - 1;      (* original n *)
+
+  mVec = mMatrix[[auxIdx]];   (* z-row, length n+1 *)
+
+  (* tryPivot[p]: monomial substitution + re-clear + atilde. *)
+  tryPivot[p_] := Module[
+    {mpLocal, apLocal, rIdx, mOther, aOther,
+     subPolys, rcMin, newPolyList, atildeRaw, hasConst},
+    mpLocal = mVec[[p]];
+    If[mpLocal == 0, Return[$Failed]];
+    apLocal = a[[p]];
+    rIdx    = DeleteCases[Range[n1], p];
+    mOther  = mVec[[rIdx]];
+    aOther  = a[[rIdx]];
+
+    subPolys = Table[
+      Map[Function[{cmono},
+        Module[{ep = cmono[[2, p]]},
+          {cmono[[1]] * z0^(ep / mpLocal),
+           Table[cmono[[2, rIdx[[jj]]]] - ep * mOther[[jj]] / mpLocal, {jj, n}]}
+        ]
+      ], clearedPolys[[k]]],
+      {k, Length[clearedPolys]}
+    ];
+
+    rcMin = Table[
+      Table[Min[#[[2, jj]] & /@ subPolys[[k]]], {jj, n}],
+      {k, Length[subPolys]}
+    ];
+
+    newPolyList = Table[
+      Map[Function[{cmono}, {cmono[[1]], cmono[[2]] - rcMin[[k]]}],
+          subPolys[[k]]],
+      {k, Length[subPolys]}
+    ];
+
+    atildeRaw = Table[
+      aOther[[jj]] - apLocal * mOther[[jj]] / mpLocal,
+      {jj, n}
+    ] + Total[Table[polyExps[[k]] * rcMin[[k]], {k, Length[polyExps]}]];
+
+    hasConst = And @@ Table[
+      AnyTrue[newPolyList[[k]], (#[[2]] === ConstantArray[0, n]) &],
+      {k, Length[newPolyList]}
+    ];
+
+    <|"pivot" -> p, "mp" -> mpLocal, "ap" -> apLocal,
+      "remainIdx" -> rIdx, "mOther" -> mOther,
+      "atilde" -> atildeRaw, "newPolys" -> newPolyList,
+      "hasConst" -> hasConst, "rcMin" -> rcMin|>
+  ];
+  (* Memoize so each pivot is computed exactly once (plan.md §5.5). *)
+  pivotCache[p_] := pivotCache[p] = tryPivot[p];
+
+  (* §6.7 EXACT realness predicate: atilde_j is real (Im exactly 0) AND
+     Re[atilde_j] > 0 — decided exactly, never by a 10^-12 tolerance.  A
+     complex atilde routes deterministically to liftcomplex. *)
+  isRealPos[av_] := TrueQ[PossibleZeroQ[Im[av]]] && TrueQ[Re[av] > 0];
+
+  candidates = {};
+  Do[
+    If[mVec[[p]] != 0,
+      Module[{res = pivotCache[p]},
+        If[res =!= $Failed &&
+           And @@ (isRealPos /@ res["atilde"]),
+          AppendTo[candidates, res]
+        ]
+      ]
+    ],
+    {p, n1}
+  ];
+
+  If[candidates === {},
+    (* Any complex-atilde candidate => liftcomplex (decided exactly). *)
+    Module[{anyComplex = False},
+      Do[
+        If[mVec[[p]] != 0,
+          Module[{res = pivotCache[p]},
+            If[res =!= $Failed &&
+               AnyTrue[res["atilde"], (!TrueQ[PossibleZeroQ[Im[#]]]) &],
+              anyComplex = True
+            ]
+          ]
+        ],
+        {p, n1}
+      ];
+      If[anyComplex,
+        Message[TropicalEval::liftcomplex, coneIndex];
+        Return[$Failed]
+      ]
+    ];
+    Module[{pivotSummary},
+      pivotSummary = Table[
+        If[mVec[[p]] != 0,
+          Module[{res = pivotCache[p]},
+            If[res =!= $Failed, {p, mVec[[p]], N[res["atilde"]]}]
+          ],
+          Nothing
+        ],
+        {p, n1}
+      ];
+      Message[TropicalEval::liftnopivot, coneIndex, mVec, pivotSummary]
+    ];
+    Return[$Failed]
+  ];
+
+  (* AMENDED ranking (plan.md §6.2): (1) HasConstantTerm; (2) |mp|=1;
+     (3) max min_j Re[atilde].  Constant-term preservation is FIRST because
+     HasConstantTerm=False sectors can have infinite MC variance (§9 risk 1). *)
+  candidates = SortBy[candidates,
+    {-Boole[#["hasConst"]],
+     -Boole[Abs[#["mp"]] == 1],
+     -Min[Re[N[#["atilde"]]]]} &
+  ];
+  bestPivot = candidates[[1]];
+
+  pivotP         = bestPivot["pivot"];
+  mp             = bestPivot["mp"];
+  ap             = bestPivot["ap"];
+  mOtherVec      = bestPivot["mOther"];
+  atildeVals     = bestPivot["atilde"];
+  reclearedPolys = bestPivot["newPolys"];
+
+  If[verbose,
+    Print["  PSL cone ", coneIndex, ": pivot p=", pivotP,
+          " mp=", mp, " atilde=", N[atildeVals],
+          " HasConstantTerm=", bestPivot["hasConst"]]
+  ];
+
+  (* ---- Step 4: domain-constraint classification (plan.md §6.2) ---- *)
+  logZ0        = Log[z0];
+  allOtherZero = And @@ (# == 0 & /@ mOtherVec);
+
+  If[allOtherZero,
+    If[N[z0^(1/mp)] > 1,
+      Return[<|"EmptyDomain" -> True, "ConeIndex" -> coneIndex|>]
+    ];
+    domainClass = None;
+    ,
+    If[mp > 0,
+      If[And @@ (#>= 0 & /@ mOtherVec) && N[z0] > 1,
+        Return[<|"EmptyDomain" -> True, "ConeIndex" -> coneIndex|>]
+      ];
+      If[And @@ (#<= 0 & /@ mOtherVec) && N[z0] <= 1,
+        domainClass = None;
+        ,
+        domainClass = <|
+          "LogZ0"           -> logZ0,
+          "MP"              -> mp,
+          "IndicatorCoeffs" -> Table[mOtherVec[[jj]] / atildeVals[[jj]], {jj, n}]
+        |>
+      ],
+      (* mp < 0 *)
+      If[And @@ (#<= 0 & /@ mOtherVec) && N[z0] < 1,
+        Return[<|"EmptyDomain" -> True, "ConeIndex" -> coneIndex|>]
+      ];
+      If[And @@ (#>= 0 & /@ mOtherVec) && N[z0] >= 1,
+        domainClass = None;
+        ,
+        domainClass = <|
+          "LogZ0"           -> logZ0,
+          "MP"              -> mp,
+          "IndicatorCoeffs" -> Table[mOtherVec[[jj]] / atildeVals[[jj]], {jj, n}]
+        |>
+      ]
+    ]
+  ];
+
+  (* ---- Step 5: flatten via FlattenSector ---- *)
+  prefactorBase = (Abs[detM] / Abs[mp]) * z0^(ap / mp - 1);
+  fsResult = FlattenSector[reclearedPolys, atildeVals, prefactorBase];
+
+  If[fsResult["IsDivergent"],
+    Message[TropicalEval::liftdivergent, coneIndex, atildeVals];
+    Return[$Failed]
+  ];
+
+  flattenedPolys = fsResult["FlattenedPolys"];
+  prefactor      = fsResult["Prefactor"];
+
+  (* ---- Step 6: assemble full SectorData ---- *)
+  <|
+    "ConeIndex"           -> coneIndex,
+    "RayMatrix"           -> mMatrix,
+    "DetM"                -> detM,
+    "SelectedRays"        -> sdAug["SelectedRays"],
+    "RawExponents"        -> sdAug["RawExponents"],
+    "NewExponents"        -> atildeVals,
+    "MinExponents"        -> bestPivot["rcMin"],
+    "TransformedPolys"    -> clearedPolys,
+    "ClearedPolys"        -> reclearedPolys,
+    "FlattenedPolys"      -> flattenedPolys,
+    "Prefactor"           -> prefactor,
+    "IsDivergent"         -> False,
+    "DivergentVariable"   -> 0,
+    "Dimension"           -> n,
+    "PolynomialExponents" -> polyExps,
+    "MonomialExponents"   -> liftData["OriginalSpec"]["MonomialExponents"],
+    "DomainConstraint"    -> domainClass,
+    "LiftData"            -> liftData,
+    "PivotIndex"          -> pivotP,
+    "ZRow"                -> mVec,
+    "AugmentedA"          -> a,
+    "HasConstantTerm"     -> bestPivot["hasConst"]
+  |>
+];
+
+
+(* --------------------------------------------------------------------------
+   ValidateLiftedDecomposition  (plan.md §6.2, §9 risk #1)
+   Direct integral from originalSpec; sectors via ProcessSectorLifted.  This
+   EXACT NIntegrate gate (not the sampled 5sigma) is the lifting correctness
+   check.  EmptyDomain sectors contribute 0 and are listed in DroppedSectors.
+   -------------------------------------------------------------------------- *)
+
+ValidateLiftedDecomposition[originalSpec_Association,
+                            liftedSpec_Association,
+                            liftedFanData_List,
+                            liftData_Association,
+                            testKinematics_List,
+                            precisionGoal_Integer: 3] :=
+Module[
+  {polys, monoExps, polyExps, vars, n,
+   dualVertices, simplexList, kinRules, pg,
+   directIntegrand, directResult,
+   sectorResults, droppedSectors, sectorSum, relError},
+
+  polys    = originalSpec["Polynomials"];
+  monoExps = originalSpec["MonomialExponents"];
+  polyExps = originalSpec["PolynomialExponents"];
+  vars     = originalSpec["Variables"];
+  n        = Length[vars];
+  kinRules = testKinematics;
+  pg       = precisionGoal;
+
+  {dualVertices, simplexList} = liftedFanData;
+
+  directIntegrand = (Times @@ MapThread[Power, {vars, monoExps}]) *
+    (Times @@ MapThread[Power, {polys, polyExps}]) /. kinRules;
+
+  directResult = NIntegrate[
+    directIntegrand,
+    Evaluate[Sequence @@ ({#, 0, Infinity} & /@ vars)],
+    MaxRecursion -> 20, PrecisionGoal -> pg + 1, Method -> "GlobalAdaptive"
+  ];
+
+  droppedSectors = {};
+
+  sectorResults = Table[
+    Module[{sd, flatPolys, pExps, pf, dim, yVars, integrand,
+            polyVals, dc, result, logYpStar, logZ0num, mpNum, icNum},
+      sd = ProcessSectorLifted[liftedSpec, dualVertices,
+                               simplexList[[s]], s, liftData];
+      Which[
+        sd === $Failed,
+          Return[$Failed],
+        AssociationQ[sd] && KeyExistsQ[sd, "EmptyDomain"] && sd["EmptyDomain"],
+          AppendTo[droppedSectors, sd["ConeIndex"]];
+          0,
+        True,
+          flatPolys = sd["FlattenedPolys"];
+          pExps     = sd["PolynomialExponents"] /. kinRules;
+          pf        = sd["Prefactor"] /. kinRules;
+          dim       = sd["Dimension"];
+          dc        = sd["DomainConstraint"];
+          yVars     = Table[Unique["yv"], {dim}];
+
+          polyVals = Table[
+            Total[Table[
+              Module[{coeff = mono[[1]] /. kinRules,
+                      alphas = mono[[2]] /. kinRules, logY = Log /@ yVars},
+                coeff * Exp[Total[alphas * logY]]
+              ], {mono, flatPolys[[j]]}]],
+            {j, Length[flatPolys]}
+          ];
+
+          integrand = pf *
+            Times @@ MapThread[
+              Function[{pv, be}, Exp[be * Log[pv]]], {polyVals, pExps}];
+
+          If[dc =!= None,
+            logZ0num = N[dc["LogZ0"]];
+            mpNum    = N[dc["MP"]];
+            icNum    = N[dc["IndicatorCoeffs"]];
+            logYpStar = (logZ0num - Total[icNum * (Log /@ yVars)]) / mpNum;
+            integrand = integrand * Boole[logYpStar <= 0]
+          ];
+
+          result = Quiet@NIntegrate[
+            integrand,
+            Evaluate[Sequence @@ ({#, 0, 1} & /@ yVars)],
+            MaxRecursion -> 15, PrecisionGoal -> pg, Method -> "GlobalAdaptive"
+          ];
+          result
+      ]
+    ],
+    {s, Length[simplexList]}
+  ];
+
+  sectorSum = Total[sectorResults];
+  relError  = Abs[(sectorSum - directResult) / directResult];
+
+  If[NumericQ[relError] && relError > 10^(-pg + 1),
+    Message[TropicalEval::validate, "LiftedDecomposition", relError,
+            10^(-pg + 1)]
+  ];
+
+  <|"DirectResult" -> directResult, "SectorSum" -> sectorSum,
+    "RelativeError" -> relError, "SectorResults" -> sectorResults,
+    "DroppedSectors" -> droppedSectors|>
+];
 
 
 (* ============================================================================
@@ -1308,7 +2003,7 @@ normalizeIntegrator[s_] := Switch[s,
    -------------------------------------------------------------------------- *)
 emitBaseFuncBody[funcName_String, comment_String, resultVar_String,
                  flatPolys_List, polyExps_List, prefactor_, dim_Integer,
-                 paramMap_Association] :=
+                 paramMap_Association, domainConstraint_: None] :=
 Module[{funcCode},
   funcCode = "inline cx " <> funcName <>
     "(const double* y, const double* params) {\n";
@@ -1319,6 +2014,29 @@ Module[{funcCode},
     "    for (int i = 0; i < " <> ToString[dim] <> "; i++)\n";
   funcCode = funcCode <>
     "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
+
+  (* Lifted-sector domain indicator (plan.md §3.3 / §6.2).  Only emitted when a
+     DomainConstraint is present; for the unlifted path (domainConstraint===None)
+     this block is skipped, keeping the emitted C++ byte-identical (#25). *)
+  If[domainConstraint =!= None,
+    Module[{dc = domainConstraint, logZ0str, mpStr, icList, icTerms, sumStr},
+      logZ0str = mmaToCInternal[N[dc["LogZ0"]], paramMap];
+      mpStr    = mmaToCInternal[N[dc["MP"]], paramMap];
+      icList   = N[dc["IndicatorCoeffs"]];
+      icTerms  = Table[
+        mmaToCInternal[icList[[i]], paramMap] <>
+        " * log_y[" <> ToString[i - 1] <> "]",
+        {i, Length[icList]}
+      ];
+      sumStr = If[Length[icTerms] == 0, "0.0", StringRiffle[icTerms, " + "]];
+      funcCode = funcCode <> "    // lifted-sector domain indicator\n";
+      funcCode = funcCode <>
+        "    double log_ypstar = (" <> logZ0str <>
+        " - (" <> sumStr <> ")) * (1.0/" <> mpStr <> ");\n";
+      funcCode = funcCode <>
+        "    if (log_ypstar > 0.0) return cx(0.0, 0.0);\n\n";
+    ]
+  ];
 
   Do[
     funcCode = funcCode <>
@@ -1416,7 +2134,8 @@ Module[
         "Convergent sector " <> ToString[sd["ConeIndex"]],
         "result",
         sd["FlattenedPolys"], sd["PolynomialExponents"],
-        sd["Prefactor"], sd["Dimension"], paramMap];
+        sd["Prefactor"], sd["Dimension"], paramMap,
+        Lookup[sd, "DomainConstraint", None]];
       funcCode = funcCode <> "    return result;\n}\n";
       AppendTo[integrandFuncs, funcCode];
       AppendTo[integrandDims, sd["Dimension"]];
@@ -2515,6 +3234,11 @@ Options[EvaluateTropicalMC] = {
      "IBP" routes to the IBP execution path (each term convergent at eps=0);
      "None"/"Subtraction" use the tropical-subtraction path of this driver. *)
   "Method"         -> Automatic,
+  (* Lifting (plan.md §6.2): pass a LiftData association (from LiftCoefficients)
+     to route all sector processing through ProcessSectorLifted; the first
+     argument is then the LIFTED (n+1)-dim spec and fanData the lifted fan.
+     Mutually exclusive with divergence handling (plan.md N3). *)
+  "LiftData"       -> None,
   "NSamples"       -> 1000000,
   "NThreads"       -> Automatic,
   "RunChecks"      -> True,
@@ -2539,7 +3263,9 @@ Module[
    cppResult, mcResults, finalResults,
    runChecks, verbose, nSamples, nThreads,
    workDir, epsVal, testEps, precGoal, eps,
-   integrator, batch, useCuba, vegasOpts, method},
+   integrator, batch, useCuba, vegasOpts, method,
+   liftData, isLifted, liftedSpec, originalSpec,
+   emptyDomainCount, hasConstList},
 
   runChecks  = OptionValue["RunChecks"];
   verbose    = OptionValue["Verbose"];
@@ -2560,6 +3286,24 @@ Module[
     "CubaMaxComp" -> OptionValue["CubaMaxComp"]};
   eps        = integrandSpec["RegulatorSymbol"];
 
+  (* --- Lifting setup (plan.md §6.2) --- *)
+  liftData = OptionValue["LiftData"];
+  isLifted = (liftData =!= None);
+  liftedSpec   = integrandSpec;  (* in lifted mode this IS the lifted (n+1) spec *)
+  originalSpec = If[isLifted, liftData["OriginalSpec"], integrandSpec];
+
+  (* Lifted-mode fan-dimension assertion (n+1 rays per simplex coordinate). *)
+  If[isLifted,
+    Module[{nOrig, fanDim},
+      nOrig  = Length[originalSpec["Variables"]];
+      fanDim = If[Length[fanData[[1]]] > 0, Length[fanData[[1, 1]]], 0];
+      If[fanDim != nOrig + 1,
+        Message[TropicalEval::liftfandim, fanDim, nOrig + 1];
+        Return[$Failed]
+      ]
+    ]
+  ];
+
   (* --- Method routing (plan.md §3.4, §5.4, D2) ---
      This driver owns the convergent + tropical-subtraction paths; the IBP path
      lives in evaluateTropicalIBPDriver, to which we delegate when Method is
@@ -2569,6 +3313,9 @@ Module[
      sectors) is unaffected: Automatic resolves to "None" and falls through. *)
   Module[{routeToIBP},
     routeToIBP = Which[
+      (* Lifting and divergence are mutually exclusive (plan.md N3): never
+         route a lifted call to the IBP/divergence path. *)
+      isLifted, False,
       method === "IBP", True,
       method === "None" || method === "Subtraction", False,
       method === Automatic,
@@ -2631,35 +3378,77 @@ Module[
   (* --- Step 2: Process all sectors --- *)
   If[verbose, Print["Processing ", Length[simplexList], " sectors..."]];
 
-  allSectorData = Table[
-    Module[{sd, specToUse},
-      specToUse = If[epsVal =!= None && eps =!= None,
-        MapAt[# /. eps -> epsVal &, integrandSpec,
-              {Key["MonomialExponents"]}] //
-        MapAt[# /. eps -> epsVal &, #,
-              {Key["PolynomialExponents"]}] &,
-        integrandSpec
-      ];
-      sd = ProcessSector[specToUse, dualVertices,
-                         simplexList[[s]], s, "Verbose" -> verbose];
-      sd
-    ],
-    {s, Length[simplexList]}
-  ];
+  emptyDomainCount = 0;
+  hasConstList     = {};
 
-  If[Count[allSectorData, _Association] != Length[simplexList],
-    Print["WARNING: ", Count[allSectorData, $Failed],
-          " sectors failed to process"];
-  ];
+  If[isLifted,
+    (* ---- Lifted mode: route every sector through ProcessSectorLifted ----
+       $Failed (liftcomplex/liftnopivot/liftdivergent) aborts the whole call;
+       EmptyDomain sectors contribute 0 and are dropped+counted; the rest are
+       convergent.  No "divergent sectors" exist in lifted mode (plan.md §6.2). *)
+    allSectorData = {};
+    Catch[
+      Do[
+        Module[{sd},
+          sd = ProcessSectorLifted[liftedSpec, dualVertices,
+                                   simplexList[[s]], s, liftData,
+                                   "Verbose" -> verbose];
+          Which[
+            sd === $Failed,
+              allSectorData = $Failed;  Throw[Null],
+            AssociationQ[sd] && KeyExistsQ[sd, "EmptyDomain"] && sd["EmptyDomain"],
+              emptyDomainCount++,
+            True,
+              AppendTo[allSectorData, sd];
+              AppendTo[hasConstList, sd["HasConstantTerm"]]
+          ]
+        ],
+        {s, Length[simplexList]}
+      ]
+    ];
+    If[allSectorData === $Failed,
+      Print["ERROR: ProcessSectorLifted failed for a sector (liftcomplex / ",
+            "liftnopivot / liftdivergent).  Aborting ($Failed)."];
+      Return[$Failed]
+    ];
+    convergentSectors = allSectorData;
+    divergentSectors  = {};
+    If[verbose,
+      Print["  ", Length[convergentSectors], " convergent sectors, ",
+            emptyDomainCount, " EmptyDomain sectors dropped"]
+    ];
+    ,
+    (* ---- Standard (unlifted) mode ---- *)
+    allSectorData = Table[
+      Module[{sd, specToUse},
+        specToUse = If[epsVal =!= None && eps =!= None,
+          MapAt[# /. eps -> epsVal &, integrandSpec,
+                {Key["MonomialExponents"]}] //
+          MapAt[# /. eps -> epsVal &, #,
+                {Key["PolynomialExponents"]}] &,
+          integrandSpec
+        ];
+        sd = ProcessSector[specToUse, dualVertices,
+                           simplexList[[s]], s, "Verbose" -> verbose];
+        sd
+      ],
+      {s, Length[simplexList]}
+    ];
 
-  convergentSectors = Select[allSectorData,
-    (AssociationQ[#] && !#["IsDivergent"]) &];
-  divergentSectors  = Select[allSectorData,
-    (AssociationQ[#] && #["IsDivergent"]) &];
+    If[Count[allSectorData, _Association] != Length[simplexList],
+      Print["WARNING: ", Count[allSectorData, $Failed],
+            " sectors failed to process"];
+    ];
 
-  If[verbose,
-    Print["  ", Length[convergentSectors], " convergent, ",
-          Length[divergentSectors], " divergent sectors"]
+    convergentSectors = Select[allSectorData,
+      (AssociationQ[#] && !#["IsDivergent"]) &];
+    divergentSectors  = Select[allSectorData,
+      (AssociationQ[#] && #["IsDivergent"]) &];
+
+    If[verbose,
+      Print["  ", Length[convergentSectors], " convergent, ",
+            Length[divergentSectors], " divergent sectors"]
+    ]
   ];
 
   (* --- Step 3: Validation checks --- *)
@@ -2668,14 +3457,18 @@ Module[
       testKP = Take[kinematicPoints, Min[3, nKP]];
       Do[
         kinRules = Thread[
-          integrandSpec["KinematicSymbols"] -> testKP[[i]]
+          originalSpec["KinematicSymbols"] -> testKP[[i]]
         ];
         If[verbose,
           Print["Validating decomposition at kinematic point ", i, "..."]
         ];
         Module[{vr},
-          vr = Quiet@ValidateDecomposition[integrandSpec, fanData,
-                                           kinRules, precGoal];
+          vr = If[isLifted,
+            Quiet@ValidateLiftedDecomposition[originalSpec, liftedSpec,
+              fanData, liftData, kinRules, precGoal],
+            Quiet@ValidateDecomposition[integrandSpec, fanData,
+              kinRules, precGoal]
+          ];
           If[AssociationQ[vr],
             Print["  Point ", i, ": rel error = ", vr["RelativeError"]]
           ];
@@ -2996,7 +3789,111 @@ Module[
     "DivergentSectors"     -> Length[divergentSectors],
     "CppFile"              -> cppFile,
     "ResultFile"           -> resultFile,
-    "AnalyticContributions" -> analyticContributions|>
+    "AnalyticContributions" -> analyticContributions,
+    (* Lifted-mode diagnostics (plan.md §6.2, §9 risk #1).  HasConstantTerm is
+       reported per CONVERGENT sector (same order as ConvergentSectors); a
+       False entry flags a potential infinite-MC-variance sector. *)
+    "IsLifted"             -> isLifted,
+    "HasConstantTerm"      -> hasConstList,
+    "EmptyDomainSectors"   -> emptyDomainCount|>
+];
+
+
+(* --------------------------------------------------------------------------
+   EvaluateTropicalMCLifted  (plan.md §3.4, §5.4, §6.2 — thin wrapper)
+
+   Detects/applies lifting, builds the (n+1)-dim lifted fan, and routes through
+   EvaluateTropicalMC with LiftData.  With no extreme coefficients it falls back
+   to plain EvaluateTropicalMC on the original spec.
+   -------------------------------------------------------------------------- *)
+
+Options[EvaluateTropicalMCLifted] = Join[
+  {"LiftRules" -> Automatic, "Threshold" -> 1000,
+   "AnchorRule" -> "kStar", "BandEdgeGuard" -> False, "FanData" -> Automatic},
+  Options[EvaluateTropicalMC]
+];
+
+EvaluateTropicalMCLifted[integrandSpec_Association, kinematicPoints_List,
+                         opts : OptionsPattern[]] :=
+Module[
+  {liftRulesOpt, threshold, anchorRule, bandEdgeGuard, fanDataOpt,
+   rules, liftResult, liftedSpec, liftData, verts, n, passThroughOpts},
+
+  liftRulesOpt  = OptionValue["LiftRules"];
+  threshold     = OptionValue["Threshold"];
+  anchorRule    = OptionValue["AnchorRule"];
+  bandEdgeGuard = OptionValue["BandEdgeGuard"];
+  fanDataOpt    = OptionValue["FanData"];
+
+  passThroughOpts = Sequence @@ FilterRules[{opts}, Options[EvaluateTropicalMC]];
+
+  (* --- Determine lift rules --- *)
+  If[liftRulesOpt === Automatic,
+    rules = DetectExtremeCoefficients[integrandSpec, threshold,
+              "AnchorRule" -> anchorRule, "BandEdgeGuard" -> bandEdgeGuard];
+    If[rules === {},
+      Print["EvaluateTropicalMCLifted: no extreme coefficients detected ",
+            "(threshold=", threshold, "); falling back to plain ",
+            "EvaluateTropicalMC on the original spec."];
+      Module[{origFan = fanDataOpt},
+        If[origFan === Automatic,
+          Module[{origVerts},
+            origVerts = PolytopeVertices[
+              (Times @@ integrandSpec["Polynomials"])^(-1),
+              integrandSpec["Variables"]];
+            origFan = ComputeDecomposition[origVerts, "ShowProgress" -> False]
+          ]
+        ];
+        Return[EvaluateTropicalMC[integrandSpec, origFan,
+                                  kinematicPoints, passThroughOpts]]
+      ]
+    ];
+    (* DetectExtremeCoefficients ships "SuggestedK"; LiftCoefficients wants "k". *)
+    rules = Map[
+      <|"PolyIndex" -> #["PolyIndex"], "ExponentVector" -> #["ExponentVector"],
+        "k" -> #["SuggestedK"]|> &, rules]
+    ,
+    rules = liftRulesOpt
+  ];
+
+  (* --- Lift the integrand --- *)
+  liftResult = LiftCoefficients[integrandSpec, rules];
+  If[!AssociationQ[liftResult], Return[$Failed]];
+  liftedSpec = liftResult["LiftedSpec"];
+  liftData   = liftResult["LiftData"];
+  n          = Length[integrandSpec["Variables"]];
+
+  (* --- Build or use the (n+1)-dim fan --- *)
+  Module[{liftedFan},
+    If[fanDataOpt =!= Automatic,
+      liftedFan = fanDataOpt
+      ,
+      (* Automatic: compute from the lifted integrand.  Quiet polymake messages
+         so a degenerate (lower-dim) lifted polytope is caught by the guard
+         below rather than leaking raw messages. *)
+      verts = Quiet[
+        PolytopeVertices[(Times @@ liftedSpec["Polynomials"])^(-1),
+                         liftedSpec["Variables"]],
+        TropicalFan::polymake];
+      liftedFan = If[ListQ[verts],
+        Quiet[ComputeDecomposition[verts, "ShowProgress" -> False],
+              TropicalFan::polymake],
+        $Failed];
+      If[!ListQ[liftedFan] || Length[liftedFan] < 2,
+        Message[TropicalEval::liftdegenerate];  Return[$Failed]
+      ];
+      Module[{dv, sl},
+        {dv, sl} = liftedFan;
+        If[Length[sl] == 0 || Length[dv] == 0 ||
+           !AllTrue[sl, Length[#] == n + 1 &],
+          Message[TropicalEval::liftdegenerate];  Return[$Failed]
+        ]
+      ]
+    ];
+
+    EvaluateTropicalMC[liftedSpec, liftedFan, kinematicPoints,
+                       "LiftData" -> liftData, passThroughOpts]
+  ]
 ];
 
 

@@ -1,0 +1,397 @@
+===========================================================================
+PHASE 3 REPORT — TROPICAL_MONTE_CARLOv3 — graft REAL-coefficient lifting
+Date: Thu Jun 25 16:15:43 EDT 2026
+Base: git 11d80ff (Phase-2 green, restored clean); branch v3-build
+tropical_eval.wl: 4262 -> 5159 lines (added M1b lifting + M1c PSL +
+  ValidateLiftedDecomposition + EvaluateTropicalMCLifted + driver wiring +
+  codegen domain-indicator).  OLD_CODE/ untouched.
+===========================================================================
+
+### §6.2 FIXES APPLIED ON TOP OF TREE B SOURCE ###
+  - BUG-2 aux-var robustness: makeAuxVar[] requires indexed vars; plain-symbol
+    specs fire TropicalEval::liftbadvar + return $Failed (no Symbol[n+1]).
+  - liftidentity: relative-tolerance numeric residual (<1e-8) instead of
+    Simplify[...]===0, so float z0 never false-positives.
+  - SuggestedK -> kStar = Max[1,Ceiling[|Log|C||/Log tau]] (tau=1000).
+  - §6.7 exactness: pivot realness decided EXACTLY via PossibleZeroQ[Im[atilde]]
+    + Re[atilde]>0 (no 10^-12 tolerance); complex atilde -> liftcomplex.
+
+##############################################################################
+# 1. SANDBOX TOYS read-only against v3 core (HARD gate 3a; §6.1 seam proof)  #
+##############################################################################
+
+===== sandbox_toy0_1d =====
+Sector sum:        9.99999999998792*^-7
+Identity check (k=1): PASS
+--- Â§3.6 hand-check: sector M={{1,1},{0,1}} must be EmptyDomain for z0=10^6 ---
+  Â§3.6 check: EmptyDomain = True â PASS (z0=1000000 > 1, constant-root sector)
+    -> EmptyDomain (dropped)
+    -> EmptyDomain (dropped)
+    -> EmptyDomain (dropped)
+    -> EmptyDomain (dropped)
+k=1 total sector sum = 1.0000000000006664*^-6
+Exact = 1/1000000
+TOY0 k=1 PASS relerr=6.664031712523208*^-13
+Identity check (k=2): PASS
+    -> EmptyDomain (dropped)
+    -> EmptyDomain (dropped)
+    -> EmptyDomain (dropped)
+    -> EmptyDomain (dropped)
+    -> EmptyDomain (dropped)
+    -> EmptyDomain (dropped)
+k=2 total sector sum = 1.0000000000000002*^-6
+Exact = 1/1000000
+TOY0 k=2 PASS relerr=2.1175823681357508*^-16
+
+===== sandbox_toy1_eps =====
+      eps=10^-3,  exact = 1/(2 eps^2) = 500000
+exact = 500000
+Unlifted sector sum        = 499952.0687727737
+Unlifted total sigma = 28237.433253855925
+Identity check (k=2): PASS
+    EmptyDomain -> True (dropped)
+    EmptyDomain -> True (dropped)
+    EmptyDomain -> True (dropped)
+TOY1 k=2 PASS relerr=0.00007922262879437767
+Unlifted sector sum = 499952.0687727737
+k=2 lifted total sigma   = 2.8527778067567768*^6
+Unlifted total sigma     = 28237.433253855925
+Sigma ratio (unlifted/lifted) = 0.009898223824854441
+    EmptyDomain -> True (dropped)
+    EmptyDomain -> True (dropped)
+    EmptyDomain -> True (dropped)
+k=1 total = 499960.3886856028  exact = 500000
+TOY1 k=1 PASS relerr=0.00007922262879437767
+k=1 lifted total sigma = 9.2531745868505*^7
+Unlifted NIntegrate:  499888.0302476812  (sector sum: 499952.0687727737)
+k=2 sector sum:  499960.3886856028  (relerr vs exact: 0.00007922262879437767)
+k=1 sector sum:  499960.3886856028  (relerr vs exact: 0.00007922262879437767)
+--- Sigma comparison ---
+Unlifted total sigma:  28237.433253855925
+Lifted k=2 sigma:      2.8527778067567768*^6
+Lifted k=1 sigma:      9.2531745868505*^7
+
+===== sandbox_toy2_largecoeff =====
+Unlifted sector sum        = 0.0007849842577801977
+Unlifted total sigma = 0.015583749064497141
+Identity check: PASS
+  Sector 4: EmptyDomain (dropped)
+  Sector 5: EmptyDomain (dropped)
+TOY2 PASS relerr=0.00004328434157284553
+Unlifted sector sum:  0.0007849842577801977  (relerr: 0.000029477969084282455)
+Lifted sector sum:    0.0007850413767323739  (relerr vs NInt: 0.00004328434157284553)
+--- Sigma comparison ---
+Unlifted total sigma:  0.015583749064497141
+Lifted total sigma:    0.0041725411155055896
+
+##############################################################################
+# 2. PHASE-3 SELF-GATE (TEST/phase3_selfgate.wl) — ALL PASS                  #
+##############################################################################
+PHASE 3 SELF-GATE (lifting) -- Thu 25 Jun 2026 16:12:10
+--- (1) Exactness guard #43: FreeQ[_Real] on lifted output ---
+  PASS  z0 exact (FreeQ _Real)
+  PASS  residuals exact (FreeQ _Real)
+  PASS  all lifted sector payloads FreeQ _Real
+--- (2) Round-trip identity #40 (z->z0 === original, EXACT) ---
+  PASS  (+) 10^6 x1^2 k=2
+  PASS  (-) -10^6 x1^2 k=2
+  PASS  multi-rule 10^6 x1^2 & 10^6 x2^2 k=2
+--- (3) BUG-2: plain-symbol spec fires liftbadvar, returns $Failed ---
+  PASS  plain-symbol LiftCoefficients -> $Failed
+--- (4) ValidateLiftedDecomposition (EXACT gate, not sampled sigma) ---
+  PASS  Toy-1 k=2 relErr < 0.5%
+  PASS  Toy-1 k=2 DroppedSectors == 3
+  PASS  Toy-0 k=1 relErr < 0.1%
+  PASS  Toy-0 k=1 EmptyDomain drops > 0
+--- (5) Driver reports HasConstantTerm per sector; EmptyDomain handled ---
+  PASS  HasConstantTerm list length == ConvergentSectors
+  PASS  EmptyDomainSectors reported (== 2 for Case A)
+  PASS  Case A has a HasConstantTerm=False sector (risk-1 flagged)
+--- (6) Error paths: liftcomplex + liftnopivot (EXACT, deterministic) ---
+  PASS  liftcomplex fires + $Failed on complex-B lift
+  PASS  liftnopivot fires + $Failed on all-nonpositive atilde
+--- (7) Domain-indicator C++ emitted for constrained lifted sectors ---
+  PASS  domain indicator block(s) present in emitted C++
+PHASE 3 SELF-GATE: ALL PASS
+
+##############################################################################
+# 3. TEST 23 (TEST/test_lifted.wl) — A/B/C/D ALL PASS                        #
+##############################################################################
+  Test 23: Lifted-integral pipeline (Â§8.2)
+--- Test 23A: Toy 1 exactness via LiftCoefficients + ValidateLiftedDecomposition ---
+  z0 = 1/1000
+  Identity check: PASS
+  Sector sum          = 499960.3886856028
+  EXACT reference     = 500000 (closed form 1/(2*1e-6))
+  relErr vs NIntegrate= 0.0001447492909277451
+  relErr vs EXACT     = 0.00007922262879437767
+  DroppedSectors      = 3
+  23A exactness (vs EXACT 500000): PASS (relErr = 0.00007922262879437767 < 0.005)
+  23A DroppedSectors: PASS (count = 3)
+23A PASS
+--- Test 23B: Test 6 Case A via EvaluateTropicalMCLifted (k=2) ---
+  Computing NIntegrate reference ...
+  NIntegrate reference = 0.0007850074779405956
+  6 convergent sectors, 2 EmptyDomain sectors dropped
+=== Monte Carlo Error Summary ===
+  MC value (k=2) = 0.0007815770115386767 +/- 3.966099206302712*^-6
+  |MC-ref| < 4*stderr: True
+  23B relErr test: PASS (0.004369979265571454 < 0.01)
+  23B error-bar test: PASS
+  6 convergent sectors, 2 EmptyDomain sectors dropped
+=== Monte Carlo Error Summary ===
+  Automatic MC value = 0.0007815770115386767 +/- 3.966099206302712*^-6  (informational; no PASS gate)
+23B PASS
+--- Test 23C: Error paths (liftcomplex, liftnopivot) ---
+  (i) liftcomplex ...
+TropicalEval::liftcomplex: ProcessSectorLifted: cone 2 — all candidate pivots produce complex atilde; cannot emit a real-valued domain indicator.  Lift with a different k or check that polynomial exponents B are real.
+TropicalEval::liftcomplex: ProcessSectorLifted: cone 3 — all candidate pivots produce complex atilde; cannot emit a real-valued domain indicator.  Lift with a different k or check that polynomial exponents B are real.
+TropicalEval::liftcomplex: ProcessSectorLifted: cone 4 — all candidate pivots produce complex atilde; cannot emit a real-valued domain indicator.  Lift with a different k or check that polynomial exponents B are real.
+General::stop: Further output of TropicalEval::liftcomplex will be suppressed during this calculation.
+  23C(i) liftcomplex: PASS (message fired, $Failed returned)
+  (ii) liftnopivot ...
+TropicalEval::liftnopivot: ProcessSectorLifted: cone 1 — no admissible pivot found.  z-row m={1, 1, 1}, per-pivot atilde={{1, 1, {0., 4.}}, {2, 1, {0., 4.}}, {3, 1, {-4., -4.}}}.  Try a different k in the lift rules; alternatively the domain constraint may cut off all divergent regions (log-space remap, future work).
+  23C(ii) liftnopivot: PASS (message fired, $Failed returned)
+23C PASS
+--- Test 23D: Toy 0 k=1 EmptyDomain via package functions ---
+  z0 = 1000000
+  Identity check: PASS
+  Sector sum        = 1.0000000000186586*^-6
+  DroppedSectors    = 4
+  23D DroppedSectors: PASS (4 sectors dropped)
+  23D exactness: PASS (relErr = 4.7801457346742254*^-11 < 0.1%)
+23D PASS
+  Test 23 Summary
+  23A (exactness/DroppedSectors): PASS
+  23B (end-to-end C++):            PASS
+  23C (error paths):               PASS
+  23D (EmptyDomain drops):          PASS
+  Overall Test 23: PASS
+
+##############################################################################
+# 4. PHASE-2 REGRESSION (TEST/phase2_selfgate.wl) — codegen byte-identical   #
+##############################################################################
+PHASE 2 SELF-GATE -- Thu 25 Jun 2026 16:09:43
+--- (1) NEW-vocabulary codegen ("MC"/"VEGAS") vs Phase-1 goldens ---
+  PASS  conv_nokat_mc.cpp == golden (NEW vocab)
+  PASS  conv_nokat_vegas_perkp.cpp == golden (NEW vocab)
+  PASS  conv_nokat_vegas_batch.cpp == golden (NEW vocab)
+  PASS  subdiv_mc.cpp == golden (NEW vocab)
+  PASS  subdiv_vegas_perkp.cpp == golden (NEW vocab)
+  PASS  subdiv_vegas_batch.cpp == golden (NEW vocab)
+  PASS  ibpdiv_mc.cpp == golden (NEW vocab)
+  PASS  ibpdiv_vegas_perkp.cpp == golden (NEW vocab)
+  PASS  ibpdiv_vegas_batch.cpp == golden (NEW vocab)
+--- (2) Exactness guard #43: FreeQ[ProcessSector output, _Real] ---
+  PASS  ProcessSector convergent payload FreeQ _Real
+  PASS  FlattenSector output FreeQ _Real
+--- (3) FlattenSector eps-threading classification ---
+  PASS  1+x1 has >=1 divergent sector at eps->0
+  PASS  divergent sector keeps ClearedPolys + NewExponents
+PHASE 2 SELF-GATE: ALL PASS
+
+##############################################################################
+# 5. HONEST VARIANCE GATE (SANDBOX/bench_lift_variance.wl) — BENCH GATE PASS #
+#    EXACT trueSigma^2 = I2 - I1^2 via converged NIntegrate (NOT sampled).   #
+#    Full per-sector I1/I2/Sigma/HasConstantTerm tables + G1-G9 assertions.  #
+##############################################################################
+
+tropical_eval.wl + sandbox_lift_common.wl loaded
+
+=================================================================
+CASE A: P = 1 + 10^6 x1^2 + x2^2 + x1 x2^2,  B={-2}   (lift {2,0} k=2)
+=================================================================
+  Converged NIntegrate reference (I1) = 0.00078500747361277262068228890686187762`8.
+  --- Case A UNLIFTED per-sector EXACT trueSigma ---
+    sector 1 (cone 1): I1=0.0005552871345242207  I2=0.0002487193536330317  Sigma=0.015761059920933733  HasConstantTerm=n/a
+    sector 2 (cone 2): I1=3.9999909829276873*^-13  I2=1.5999927863527429*^-25  Sigma=4.962196328981895*^-19  HasConstantTerm=n/a
+    sector 3 (cone 3): I1=0.0002296968817657748  I2=0.000026858467736181973  Sigma=0.005177422822089099  HasConstantTerm=n/a
+    sector 4 (cone 4): I1=2.410902031879815*^-10  I2=1.4769561424961135*^-12  Sigma=1.2153008205261888*^-6  HasConstantTerm=n/a
+    => TOTAL trueSigma = 0.01658965697013982
+  Unlifted I1 sum = 0.0007849842577801977  (ref 0.00078500747361277262068228890686187762`8.; relErr 0.000029574027452369783)
+  --- Case A LIFTED k=2 per-sector EXACT trueSigma ---
+    sector 1 (cone 1): I1=0.00043516144780387405  I2=2.3773089726931788*^-7  Sigma=0.0002199213759836776  HasConstantTerm=True
+    sector 2 (cone 2): I1=5.898681671544094*^-7  I2=5.896972694893906*^-8  Sigma=0.00024283611552749818  HasConstantTerm=True
+    sector 3 (cone 3): I1=0.00017329628435529368  I2=0.00001504956788989135  Sigma=0.0038755046494256718  HasConstantTerm=True
+    sector 4 (cone 4): EmptyDomain (dropped)
+    sector 5 (cone 5): EmptyDomain (dropped)
+    sector 6 (cone 6): I1=2.9280343258800914*^-7  I2=9.468335611240799*^-14  Sigma=9.460182861386549*^-8  HasConstantTerm=True
+    sector 7 (cone 7): I1=0.00017397983572324627  I2=6.84817007852549*^-7  Sigma=0.0008090414232993643  HasConstantTerm=True
+    sector 8 (cone 8): I1=1.6824904573982467*^-6  I2=DIVERGENT  Sigma=INF  HasConstantTerm=False
+    => TOTAL trueSigma = INFINITE (divergent I2 in sectors {8})
+  Lifted I1 sum = 0.0007850027299395547  (ref 0.00078500747361277262068228890686187762`8.; relErr 6.042838287989023*^-6)
+  Lifted z0 = 1000   HasConstantTerm per sector = {True, True, True, True, True, False}
+  *** WARNING: HasConstantTerm=False in lifted sector(s) -> I2 DIVERGES -> INFINITE true variance (plan Â§9 risk #1 / L5). ***
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp
+  4 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 4 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:37:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:54:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:71:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:112:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+5 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc
+Generated C++ Monte Carlo code: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp
+  6 convergent sectors
+  0 G0 integrands
+  0 G1 integrands
+  0 remainder integrands
+  Total: 6 integrand functions
+Compiling: g++ -std=c++17 -O3 -fopenmp -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp -lm
+  OpenMP not supported, retrying without -fopenmp...
+Compiling: g++ -std=c++17 -O3 -Wall -Wextra -o /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp -lm
+Compiler warnings:
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:20:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_0(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:37:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_1(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:58:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_2(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:79:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_3(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:96:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_4(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:117:59: warning: unused parameter 'params' [-Wunused-parameter]
+inline cx integrand_conv_5(const double* y, const double* params) {
+                                                          ^
+/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc_generated.cpp:164:9: warning: unused variable 'n_threads' [-Wunused-variable]
+    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;
+        ^
+7 warnings generated.
+
+Compilation successful: /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/INTERFILES/bench_lift/tropical_mc
+  [informational] sampled sigma: unlifted=0.016677064019884672  lifted=0.003986604341149474  sampled-ratio=17.499793387088854  <-- DO NOT TRUST (lifted sector with divergent I2 makes this optimistic)
+
+=================================================================
+CASE B (report-only): 5-monomial mixed-coeff, B={-2}   (1-rule k=2 {2,0})
+=================================================================
+  Converged NIntegrate reference (I1) = 144.0578434006272533623`8.
+  --- Case B UNLIFTED per-sector EXACT trueSigma ---
+    sector 1 (cone 1): I1=143.84333488684598  I2=DIVERGENT  Sigma=INF  HasConstantTerm=n/a
+    sector 2 (cone 2): I1=2.3432284564968927*^-9  I2=6.049550998650254*^-18  Sigma=7.475502654092525*^-10  HasConstantTerm=n/a
+    sector 3 (cone 3): I1=3.862318965303164*^-10  I2=DIVERGENT  Sigma=INF  HasConstantTerm=n/a
+    sector 4 (cone 4): I1=0.21460120583624365  I2=1.0908301963432445*^6  Sigma=1044.4281451060035  HasConstantTerm=n/a
+    sector 5 (cone 5): I1=4.1187213245809904*^-10  I2=1.888995386967618*^-19  Sigma=1.3878359125336074*^-10  HasConstantTerm=n/a
+    => TOTAL trueSigma = INFINITE (divergent I2 in sectors {1, 3})
+  --- Case B LIFTED k=2 per-sector EXACT trueSigma ---
+    sector 1 (cone 1): I1=143.16551816307967  I2=6.547608376470326*^7  Sigma=8090.462743200314  HasConstantTerm=True
+    sector 2 (cone 2): EmptyDomain (dropped)
+    sector 3 (cone 3): EmptyDomain (dropped)
+    sector 4 (cone 4): I1=0.214600749489326  I2=1.0908258877077485*^6  Sigma=1044.4260824272183  HasConstantTerm=True
+    sector 5 (cone 5): I1=8.33252038649616*^-16  I2=6.943089614679389*^-25  Sigma=8.332516229561026*^-13  HasConstantTerm=True
+    sector 6 (cone 6): I1=2.327191474070829*^-7  I2=9.052806158688234*^-13  Sigma=9.225629595311877*^-7  HasConstantTerm=True
+    sector 7 (cone 7): I1=0.00031381480213142713  I2=DIVERGENT  Sigma=INF  HasConstantTerm=True
+    sector 8 (cone 8): I1=2.4963927822611718*^-15  I2=9.12098850212054*^-27  Sigma=9.547123401945329*^-14  HasConstantTerm=True
+    => TOTAL trueSigma = INFINITE (divergent I2 in sectors {7})
+  Lifted z0 = 100   HasConstantTerm per sector = {True, True, True, True, True, True}
+  Case B I1 sums: unlifted=144.05793609582355  lifted=143.38043296009027  (ref 144.0578434006272533623`8.)
+
+=================================================================
+CASE C: P = 1 + 10^8 x1^3 x2 + x2^3,  B={-3}   (degenerate lift)
+=================================================================
+  Converged NIntegrate reference (I1) = 0.00168451413097500805980371449706115213`8.
+  --- Case C UNLIFTED per-sector EXACT trueSigma ---
+    sector 1 (cone 1): I1=0.0016327723431794354  I2=0.0015725355932980556  Sigma=0.03962158058146348  HasConstantTerm=n/a
+    sector 2 (cone 2): I1=2.0454544907377737*^-25  I2=4.1838840736793266*^-50  Sigma=3.7740365152764083*^-33  HasConstantTerm=n/a
+    sector 3 (cone 3): I1=0.00005191106801883958  I2=1.4739593462815325*^-6  Sigma=0.0012129569602004333  HasConstantTerm=n/a
+    => TOTAL trueSigma = 0.039640142688450335
+  DetectExtremeCoefficients (Automatic kStar) -> {<|PolyIndex -> 1, ExponentVector -> {3, 1}, Coefficient -> 100000000, Magnitude -> 1.*^8, SuggestedK -> 3|>}
+  Geometry gate: Automatic EvaluateTropicalMCLifted on Case C -> refuses (no usable lifted result; liftdegenerate -> $Failed)
+  --- Case C LIFTED k=2 (explicit fan) per-sector EXACT trueSigma ---
+    sector 1 (cone 1): EmptyDomain (dropped)
+    sector 2 (cone 2): EmptyDomain (dropped)
+    sector 3 (cone 3): EmptyDomain (dropped)
+    sector 4 (cone 4): I1=6.43163485928217*^-6  I2=DIVERGENT  Sigma=INF  HasConstantTerm=False
+    sector 5 (cone 5): I1=0.0008750256945140995  I2=DIVERGENT  Sigma=INF  HasConstantTerm=False
+    sector 6 (cone 6): I1=0.0008026829498940924  I2=DIVERGENT  Sigma=INF  HasConstantTerm=False
+    => TOTAL trueSigma = INFINITE (divergent I2 in sectors {4, 5, 6})
+  Case C k=2 HasConstantTerm per sector = {False, False, False}   I1 sum = 0.0016841402792674741
+  Case C k=4 HasConstantTerm per sector = {False, False, False}   I1 sum = 0.0016841402792674741
+  *** WARNING: HasConstantTerm=False in Case C lifted sector(s) -> I2 DIVERGES -> NOT beneficial (structural; documented limitation). ***
+
+=================================================================
+CASE D (FINITE-VARIANCE demo): P = 1 + 10^6 x1,  B={-2}, 1D  (lift {1} k=2)
+=================================================================
+  --- Case D UNLIFTED per-sector EXACT trueSigma ---
+    sector 1 (cone 1): I1=9.999990002130522*^-7  I2=3.333333333618343*^-7  Sigma=0.0005773494031899867  HasConstantTerm=n/a
+    sector 2 (cone 2): I1=9.99999000001001*^-13  I2=9.999980000033344*^-25  Sigma=5.76420701484265*^-19  HasConstantTerm=n/a
+    => TOTAL trueSigma = 0.0005773494031899867
+  Unlifted I1 sum = 1.0000000002120523*^-6  (exact 1.*^-6; relErr 2.1205236900450914*^-10)
+  --- Case D LIFTED k=2 per-sector EXACT trueSigma ---
+    sector 1 (cone 1): I1=9.999990000010013*^-13  I2=9.999980000033346*^-25  Sigma=5.762613592002298*^-19  HasConstantTerm=True
+    sector 2 (cone 2): I1=3.0621777635202666*^-11  I2=1.0539592264803503*^-20  Sigma=9.798928002217234*^-11  HasConstantTerm=True
+    sector 3 (cone 3): I1=9.999683782233723*^-7  I2=1.0540925533898073*^-8  Sigma=0.0001026641397818178  HasConstantTerm=True
+    sector 4 (cone 4): EmptyDomain (dropped)
+    sector 5 (cone 5): EmptyDomain (dropped)
+    sector 6 (cone 6): EmptyDomain (dropped)
+    sector 7 (cone 7): EmptyDomain (dropped)
+    => TOTAL trueSigma = 0.00010266413978186456
+  Lifted I1 sum = 1.0000000000000076*^-6  (exact 1.*^-6; relErr 7.623296525288703*^-15)
+  Lifted z0 = 1000   HasConstantTerm per sector = {True, True, True}
+  EXACT VarRed (trueSigma_U^2/trueSigma_L^2) = 31.625681822076615   (all HasConstantTerm=True, all I2 converge -> GENUINE finite reduction)
+
+=================================================================
+  HONEST VARIANCE CLASSIFICATION (EXACT trueSigma; no sampled sigma)
+=================================================================
+  *** WARNING [Case A (lift {2,0} k=2)]: divergent I2 in sector(s) {8} -> INFINITE true variance (HasConstantTerm=False; plan Â§9 risk #1 / L5). ***
+  Case A (lift {2,0} k=2):
+     trueSigma_unlifted = 0.01658965697013982   trueSigma_lifted = INFINITE
+     class: INFINITE-VARIANCE / NOT-BENEFICIAL (class ii: divergent I2; HasConstantTerm=False root cause)
+     EXACT VarRed (trueSigma_U^2 / trueSigma_L^2) = INFINITE
+  *** WARNING [Case B (1-rule k=2)]: divergent I2 in sector(s) {7} -> INFINITE true variance (HasConstantTerm=True but I2 still diverges). ***
+  Case B (1-rule k=2):
+     trueSigma_unlifted = INFINITE   trueSigma_lifted = INFINITE
+     class: INFINITE-VARIANCE / NOT-BENEFICIAL (class ii: divergent I2; divergent even with HasConstantTerm=True)
+     EXACT VarRed (trueSigma_U^2 / trueSigma_L^2) = INFINITE
+  *** WARNING [Case C (explicit-fan lift)]: divergent I2 in sector(s) {4, 5, 6} -> INFINITE true variance (HasConstantTerm=False; plan Â§9 risk #1 / L5). ***
+  Case C (explicit-fan lift):
+     trueSigma_unlifted = 0.039640142688450335   trueSigma_lifted = INFINITE
+     class: INFINITE-VARIANCE / NOT-BENEFICIAL (class ii: divergent I2; HasConstantTerm=False root cause)
+     EXACT VarRed (trueSigma_U^2 / trueSigma_L^2) = INFINITE
+  Case D (1D 1+10^6 x1, B=-2, lift k=2) -- FINITE-VARIANCE demo:
+     trueSigma_unlifted = 0.0005773494031899867   trueSigma_lifted = 0.00010266413978186456
+     class: FINITE-VARIANCE (class i: all I2 converge, all HasConstantTerm=True)
+     EXACT VarRed (trueSigma_U^2 / trueSigma_L^2) = 31.625681822076615
+
+=================================================================
+  BENCH GATE ASSERTIONS
+=================================================================
+  (G1) exact trueSigma (I1,I2) computed for every scheme: PASS
+  (G2) I1 decomposition reproduces converged reference (Case A lifted relErr=6.042838287989023*^-6, unlifted relErr=0.000029574027452369783): PASS
+  (G3) Case A HasConstantTerm=False warning fires + true variance INFINITE: PASS  (divergent sectors={8})
+  (G4) Case A headline VarRed = INFINITE (NOT an 18x sampled pass): PASS
+  (G5) Case C all lifted sectors HasConstantTerm=False (NOT beneficial): PASS
+  (G6) Case C geometry-gate anchor selection refuses Automatic lift: PASS
+  (G7) Case D class-(i) GENUINE finite VarRed = 31.625681822076615 (>=1, all HasConstantTerm=True, all I2 converge, corroborated by exact trueSigma): PASS
+  (G8) infinite-variance WARNING fired on EVERY divergent scheme {Case A (lift {2,0} k=2), Case B (1-rule k=2), Case C (explicit-fan lift)} (and not on finite Case D): PASS
+  (G9) Case B (report-only) reported honestly via exact trueSigma: VarRed=INFINITE  (INFINITE: divergent I2 in a HasConstantTerm=True sector -- correctly NOT a finite pass)
+
+Wrote /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/SANDBOX/benchmark_results.md
+
+=================================================================
+BENCH GATE: ALL PASS (honest exact-trueSigma; A/B/C infinite-variance with warnings firing on every divergent scheme; Case D class-(i) genuine finite VarRed=31.625681822076615 corroborated by exact trueSigma; no sampled-sigma headline)
+=================================================================
