@@ -185,6 +185,68 @@ ParsePolynomial[poly_, vars_List] := Module[
 TransformExponents[expVec_List, mMatrix_List] := expVec . mMatrix;
 
 (* --------------------------------------------------------------------------
+   FlattenSector  (extracted from ProcessSector; Tree B factoring + Tree A eps)
+
+   Given the cleared (min-exponent-shifted) polynomials, the effective monomial
+   exponents a_i^eff, and a prefactor base (|det M| for the plain path; the
+   lifted prefactor for the lifted path), decide convergence and either flatten
+   or report the divergence.
+
+   eps threading (plan.md §6.1): the convergence predicate is evaluated at
+   eps -> 0 when eps =!= None, so an eps-regulated integral is classified by its
+   eps^0 leading behaviour.  The decision is EXACT (no float tolerance): a
+   variable is divergent iff Re[a_i^eff |_{eps->0}] <= 0, decided symbolically
+   (TrueQ on the exact comparison) or, for an explicit number, on its exact Re.
+   "Last violating index wins" loop semantics are preserved from Tree A.
+
+   Returns an Association with the flatten/divergence payload only; ProcessSector
+   (and ProcessSectorLifted) merge it into the full SectorData.
+     IsDivergent -> True :  {IsDivergent, DivergentVariable}
+     IsDivergent -> False:  {IsDivergent, DivergentVariable(=0),
+                             FlattenedPolys, Prefactor}
+   -------------------------------------------------------------------------- *)
+
+FlattenSector[clearedPolys_List, effectiveAVals_List, prefactorBase_,
+              eps_: None] :=
+Module[{a0vals, isDivergent, divVar, n, flattenedPolys, prefactor},
+  n = Length[effectiveAVals];
+
+  (* Convergence test at eps -> 0 (exact). *)
+  a0vals = effectiveAVals /. (If[eps =!= None, eps -> 0, {}]);
+  isDivergent = False;
+  divVar = 0;
+  Do[
+    If[TrueQ[Re[a0vals[[i]]] <= 0] ||
+       (NumericQ[a0vals[[i]]] && Re[a0vals[[i]]] <= 0),
+      isDivergent = True;
+      divVar = i;
+    ],
+    {i, n}
+  ];
+
+  If[isDivergent,
+    Return[<|"IsDivergent" -> True, "DivergentVariable" -> divVar|>]
+  ];
+
+  (* Convergent: flatten y_i -> (y_i')^{1/a_i^eff}.  Each monomial
+     {coeff, {e1,...,en}} of Q_j becomes {coeff, {e1/a1^eff,...,en/an^eff}}. *)
+  flattenedPolys = Table[
+    Table[
+      {mono[[1]],
+       MapThread[#1/#2 &, {mono[[2]], effectiveAVals}]},
+      {mono, clearedPolys[[j]]}
+    ],
+    {j, Length[clearedPolys]}
+  ];
+
+  (* Prefactor = base / Prod(a_i^eff) *)
+  prefactor = prefactorBase / (Times @@ effectiveAVals);
+
+  <|"IsDivergent" -> False, "DivergentVariable" -> 0,
+    "FlattenedPolys" -> flattenedPolys, "Prefactor" -> prefactor|>
+];
+
+(* --------------------------------------------------------------------------
    MODULE 1: ProcessSector
 
    Key insight (tropical factoring):
@@ -302,61 +364,44 @@ Module[
   ];
 
   (* --- Step 2: Flattening using effective exponents --- *)
-  (* Check convergence: Re(a_i^eff) > 0 for all i at eps = 0 *)
-  isDivergent = False;
-  divVar = 0;
+  (* Convergence decision + flatten are factored into FlattenSector (eps-aware,
+     plan.md §6.1).  The pre-flattening divergent branch is PRESERVED verbatim
+     (plan.md §9 risk #2 KEEP): the lifted path consumes ClearedPolys/
+     NewExponents from it, and (n+1)-dim pre-delta sectors are routinely flagged
+     divergent even when the delta-constrained integral is finite. *)
+  Module[{flat},
+    flat = FlattenSector[clearedPolys, effectiveAVals, Abs[detM], eps];
+    isDivergent = flat["IsDivergent"];
+    divVar      = flat["DivergentVariable"];
 
-  Module[{a0vals},
-    a0vals = effectiveAVals /. (If[eps =!= None, eps -> 0, {}]);
-    Do[
-      If[TrueQ[Re[a0vals[[i]]] <= 0] ||
-         (NumericQ[a0vals[[i]]] && Re[a0vals[[i]]] <= 0),
-        isDivergent = True;
-        divVar = i;
-      ],
-      {i, n}
+    If[isDivergent,
+      (* Divergent: return pre-flattened data for Module 2 *)
+      sectorData = <|
+        "ConeIndex"           -> coneIndex,
+        "RayMatrix"           -> mMatrix,
+        "DetM"                -> detM,
+        "SelectedRays"        -> selectedRays,
+        "RawExponents"        -> rawAVals,
+        "NewExponents"        -> effectiveAVals,
+        "MinExponents"        -> minExponents,
+        "TransformedPolys"    -> transformedPolys,
+        "ClearedPolys"        -> clearedPolys,
+        "Prefactor"           -> Abs[detM],
+        "IsDivergent"         -> True,
+        "DivergentVariable"   -> divVar,
+        "Dimension"           -> n,
+        "PolynomialExponents" -> polyExps,
+        "MonomialExponents"   -> monoExps
+      |>;
+      If[verbose,
+        Print["  -> Divergent in variable y_", divVar]
+      ];
+      Return[sectorData]
     ];
-  ];
 
-  If[isDivergent,
-    (* Divergent: return pre-flattened data for Module 2 *)
-    sectorData = <|
-      "ConeIndex"           -> coneIndex,
-      "RayMatrix"           -> mMatrix,
-      "DetM"                -> detM,
-      "SelectedRays"        -> selectedRays,
-      "RawExponents"        -> rawAVals,
-      "NewExponents"        -> effectiveAVals,
-      "MinExponents"        -> minExponents,
-      "TransformedPolys"    -> transformedPolys,
-      "ClearedPolys"        -> clearedPolys,
-      "Prefactor"           -> Abs[detM],
-      "IsDivergent"         -> True,
-      "DivergentVariable"   -> divVar,
-      "Dimension"           -> n,
-      "PolynomialExponents" -> polyExps,
-      "MonomialExponents"   -> monoExps
-    |>;
-    If[verbose,
-      Print["  -> Divergent in variable y_", divVar]
-    ];
-    Return[sectorData]
+    flattenedPolys = flat["FlattenedPolys"];
+    prefactor      = flat["Prefactor"];
   ];
-
-  (* Convergent: flatten y_i -> (y_i')^{1/a_i^eff} *)
-  (* Each monomial {coeff, {e1,...,en}} of Q_j becomes
-     {coeff, {e1/a1^eff,...,en/an^eff}} *)
-  flattenedPolys = Table[
-    Table[
-      {mono[[1]],
-       MapThread[#1/#2 &, {mono[[2]], effectiveAVals}]},
-      {mono, clearedPolys[[j]]}
-    ],
-    {j, Length[clearedPolys]}
-  ];
-
-  (* Prefactor = |det(M)| / Prod(a_i^eff) *)
-  prefactor = Abs[detM] / (Times @@ effectiveAVals);
 
   sectorData = <|
     "ConeIndex"            -> coneIndex,
@@ -550,56 +595,8 @@ Module[
     "RelativeError" -> relError, "SectorResults" -> sectorResults|>
 ];
 
-(* --------------------------------------------------------------------------
-   2D benchmark unit test (hard-coded)
-   P = 1 + 2 x1^2 + x2^2 + x1 x2^2 + 3 x1^2 x2
-   rho_1 = (0,1), rho_2 = (1,1), A_1 = A_2 = 0, polynomial exponent -A
-   Expected effective: a_1 = 2A - 1, a_2 = 3A - 2
-   -------------------------------------------------------------------------- *)
-
-RunBenchmark2D[] := Module[
-  {dualVerts, simplex, integrandSpec, sd, aExpected, aGot, A, pass},
-
-  dualVerts = {{0, 1}, {1, 1}};
-  simplex   = {1, 2};
-
-  A = Symbol["Abench"];
-
-  integrandSpec = <|
-    "Polynomials"       -> {1 + 2 x[1]^2 + x[2]^2 + x[1] x[2]^2 + 3 x[1]^2 x[2]},
-    "MonomialExponents" -> {0, 0},
-    "PolynomialExponents" -> {-A},
-    "Variables"         -> {x[1], x[2]},
-    "KinematicSymbols"  -> {},
-    "RegulatorSymbol"   -> None
-  |>;
-
-  sd = ProcessSector[integrandSpec, dualVerts, simplex, 1];
-
-  (* Expected effective exponents:
-     Raw a = (monoExps+1).M = {1,1}.{{0,-1},{-1,-1}} = {-1,-2}
-     Transformed polynomial monomials in y have exponents:
-       1         -> {0,0}.M = {0,0}
-       2 x1^2    -> {2,0}.M = {0,-2}
-       x2^2      -> {0,2}.M = {-2,-2}
-       x1 x2^2   -> {1,2}.M = {-2,-3}     <- dominant (minimum)
-       3 x1^2 x2 -> {2,1}.M = {-1,-3}
-     minExp = {-2, -3}
-     effA = rawA + B*minExp = {-1,-2} + (-A)*{-2,-3} = {2A-1, 3A-2} *)
-
-  aExpected = {2 A - 1, 3 A - 2};
-  aGot      = sd["NewExponents"];
-
-  pass = TrueQ[Simplify[aGot - aExpected] === {0, 0}] ||
-         (aGot === aExpected);
-  If[!pass,
-    Print["BENCHMARK 2D FAILED: expected a_eff = ", aExpected,
-          " got ", aGot];
-    ,
-    Print["Benchmark 2D: PASSED (a_eff = ", aGot, ")"];
-  ];
-  pass
-];
+(* The hard-coded 2D benchmark unit test was removed in v3
+   (plan.md §5.6 — dead code in both old trees). *)
 
 
 (* ============================================================================
@@ -1260,33 +1257,145 @@ Module[{lines, polyVar},
    -------------------------------------------------------------------------- *)
 
 (* ============================================================================
-   Codegen is factored so the integrand-definitions block (everything BEFORE
-   "int main(") is shared, and the main() is selectable:
-     emitIntegrandDefinitions -> the shared "Defs" prefix + counts/dims
-     emitMonteCarloMain       -> the plain-MC main(), VERBATIM (B0 invariant)
-     emitVegasMain            -> per-kp CUBA Vegas main (CUBA-guarded)
-     emitVegasBatchMain       -> chunked-ncomp CUBA Vegas main (CUBA-guarded)
-   GenerateCppMonteCarlo builds Defs, picks the main from {Integrator,Batch},
-   and concatenates.  For "MonteCarlo", Defs<>emitMonteCarloMain must equal the
-   pre-refactor output byte-for-byte (guarded by TEST/golden_capture.wl).
+   MODULE 3: Unified C++ code generation  (plan.md §5.1, §5.2)
+
+   The convergent and IBP code-generation towers are collapsed into ONE
+   parametrized path:
+     emitBaseFuncBody / emitLogTail -> shared per-integrand C++ body helpers
+     emitIntegrandDefinitions       -> ONE Defs emitter (per-integrand TYPE TAG;
+                                       IBP-only Defs lines emitted only in IBP
+                                       mode, keyed off ibpSectors =!= {})
+     emitMain                       -> ONE main() emitter, kind in {MC, VEGAS}
+                                       with a Batch mode (the old standalone
+                                       batched-Vegas main is folded in here),
+                                       result-assembly routed by info["IsIBP"]
+     GenerateCpp                    -> ONE public entry (the IBP variant is an
+                                       absorbed code path, selected by passing
+                                       ibpSectors); GenerateCppMonteCarlo kept as
+                                       a thin alias for API continuity.
+
+   Output is byte-for-byte identical to the Phase-1 towers for every kind x
+   sampler (golden-master regression, cross-check #25).  Integrator vocabulary
+   is "MC" / "VEGAS" (plan.md §4.3) with "MonteCarlo" / "Vegas" accepted as
+   input aliases so older callers / captured scripts keep working; the emitted
+   C++ bytes (incl. the user-facing 'use Integrator -> "MonteCarlo"' hint) are
+   unchanged.
    ============================================================================ *)
 
+(* Shared VEGAS / sampler option defaults (plan.md §5.7) -- Join'd into every
+   codegen / driver option block so the tuning defaults live in one place. *)
+$vegasOptionDefaults = {
+  "VegasEpsRel" -> 1.*^-12,
+  "VegasEpsAbs" -> 1.*^-300,
+  "VegasSeed"   -> 0,
+  "CubaMaxComp" -> 512
+};
+
+(* Normalize the integrator vocabulary: canonical "MC" / "VEGAS"; accept the
+   older "MonteCarlo" / "Vegas" spellings as aliases.  Returns "MC" | "VEGAS". *)
+normalizeIntegrator[s_] := Switch[s,
+  "VEGAS" | "Vegas", "VEGAS",
+  "MC" | "MonteCarlo", "MC",
+  _, "MC"];
+
+(* --------------------------------------------------------------------------
+   emitBaseFuncBody — the shared C++ body for a "base" integrand function:
+   the signature, log_y[] setup, the per-polynomial monomial sums, the
+   prefactor assignment, and the polynomial-exponent product.  Does NOT emit
+   the closing "return ...;\n}\n" (callers add their own tail: a plain return,
+   or a log-insertion factor).  resultVar is the C++ lvalue ("result",
+   "g0_val", "base_val").  Reproduces the Phase-1 bytes exactly.
+   -------------------------------------------------------------------------- *)
+emitBaseFuncBody[funcName_String, comment_String, resultVar_String,
+                 flatPolys_List, polyExps_List, prefactor_, dim_Integer,
+                 paramMap_Association] :=
+Module[{funcCode},
+  funcCode = "inline cx " <> funcName <>
+    "(const double* y, const double* params) {\n";
+  funcCode = funcCode <> "    // " <> comment <> "\n";
+  funcCode = funcCode <>
+    "    double log_y[" <> ToString[dim] <> "];\n";
+  funcCode = funcCode <>
+    "    for (int i = 0; i < " <> ToString[dim] <> "; i++)\n";
+  funcCode = funcCode <>
+    "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
+
+  Do[
+    funcCode = funcCode <>
+      GenerateMonomialSumCpp[flatPolys[[j]], j - 1, paramMap, dim] <> "\n\n";,
+    {j, Length[flatPolys]}
+  ];
+
+  funcCode = funcCode <> "    cx " <> resultVar <> " = " <>
+    mmaToCInternal[prefactor, paramMap] <> ";\n";
+  Do[
+    funcCode = funcCode <>
+      "    " <> resultVar <> " *= std::exp(" <>
+      mmaToCInternal[polyExps[[j]], paramMap] <>
+      " * std::log(P" <> ToString[j - 1] <> "));\n";,
+    {j, Length[polyExps]}
+  ];
+  funcCode
+];
+
+(* emitLogTail — the shared log-insertion factor block (G1 / IBP log funcs).
+   withComment -> True emits the "// Log insertion factors\n" header (G1 and the
+   IBP boundary-log function); False omits it (IBP term-log function), matching
+   the Phase-1 bytes.  Accumulates into a C++ "cx log_sum". *)
+emitLogTail[varTerms_List, polyTerms_List, paramMap_Association,
+            withComment_:True] :=
+Module[{funcCode},
+  funcCode = If[withComment,
+    "\n    // Log insertion factors\n    cx log_sum(0.0, 0.0);\n",
+    "\n    cx log_sum(0.0, 0.0);\n"];
+  Do[
+    Module[{coeff, varIdx},
+      coeff  = vt[[1]];
+      varIdx = vt[[2]] - 1;
+      funcCode = funcCode <>
+        "    log_sum += " <> mmaToCInternal[coeff, paramMap] <>
+        " * log_y[" <> ToString[varIdx] <> "];\n";
+    ],
+    {vt, varTerms}
+  ];
+  Do[
+    Module[{coeff, polyIdx},
+      coeff   = pt[[1]];
+      polyIdx = pt[[2]] - 1;
+      funcCode = funcCode <>
+        "    log_sum += " <> mmaToCInternal[coeff, paramMap] <>
+        " * std::log(P" <> ToString[polyIdx] <> ");\n";
+    ],
+    {pt, polyTerms}
+  ];
+  funcCode
+];
+
+(* --------------------------------------------------------------------------
+   emitIntegrandDefinitions — ONE Defs emitter for both the convergent/
+   subtraction path (pass ibpSectors -> {}) and the IBP path (pass the IBP
+   sectors).  In subtraction mode it emits conv + g0 + g1 + rem integrands and
+   the plain Defs tail; in IBP mode it emits conv + ibp(boundary base/log +
+   per-term base/log), the integrand_type[]/N_CONV lines, and the IBPFuncMap.
+   The two modes are mutually exclusive (divergentSectors and ibpSectors are
+   never both non-empty).  Byte-identical to the Phase-1 towers (#25).
+   -------------------------------------------------------------------------- *)
 Options[emitIntegrandDefinitions] = {"MaxDim" -> 20};
 
 emitIntegrandDefinitions[convergentSectors_List, divergentSectors_List,
-                         integrandSpec_Association,
+                         ibpSectors_List, integrandSpec_Association,
                          OptionsPattern[]] :=
 Module[
-  {kinSyms, paramMap, nParams,
-   code, integrandFuncs, integrandDims, nIntegrands,
-   nConvergent, nG0, nG1, nRemainder,
-   maxDim},
+  {kinSyms, paramMap, nParams, isIBP,
+   code, integrandFuncs, integrandDims, integrandTypes,
+   nConvergent, nG0, nG1, nRemainder, nIBPFuncs,
+   maxDim, ibpFuncMap, nIntegrands, allFuncNames},
 
   kinSyms  = integrandSpec["KinematicSymbols"];
   nParams  = Length[kinSyms];
   maxDim   = OptionValue["MaxDim"];
+  isIBP    = (ibpSectors =!= {});
 
-  (* Build parameter map: kinematic symbol -> params[i] *)
   paramMap = Association @@ Table[
     kinSyms[[i]] -> ("params[" <> ToString[i - 1] <> "]"),
     {i, nParams}
@@ -1294,293 +1403,278 @@ Module[
 
   integrandFuncs = {};
   integrandDims  = {};
-  nConvergent = 0; nG0 = 0; nG1 = 0; nRemainder = 0;
+  integrandTypes = {};
+  nConvergent = 0; nG0 = 0; nG1 = 0; nRemainder = 0; nIBPFuncs = 0;
+  ibpFuncMap  = {};
 
-  (* --- Generate convergent sector integrands --- *)
+  (* --- Convergent sector integrands (shared by both modes) --- *)
   Do[
-    Module[{sd, flatPolys, polyExps, prefactor, dim, funcName,
-            funcCode, polyCode, prodCode},
-      sd        = convergentSectors[[s]];
-      flatPolys = sd["FlattenedPolys"];
-      polyExps  = sd["PolynomialExponents"];
-      prefactor = sd["Prefactor"];
-      dim       = sd["Dimension"];
-      funcName  = "integrand_conv_" <> ToString[s - 1];
-
-      funcCode = "inline cx " <> funcName <>
-        "(const double* y, const double* params) {\n";
-      funcCode = funcCode <>
-        "    // Convergent sector " <> ToString[sd["ConeIndex"]] <> "\n";
-      funcCode = funcCode <>
-        "    double log_y[" <> ToString[dim] <> "];\n";
-      funcCode = funcCode <>
-        "    for (int i = 0; i < " <> ToString[dim] <>
-        "; i++)\n";
-      funcCode = funcCode <>
-        "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
-
-      Do[
-        funcCode = funcCode <>
-          GenerateMonomialSumCpp[flatPolys[[j]], j - 1, paramMap, dim] <>
-          "\n\n";,
-        {j, Length[flatPolys]}
-      ];
-
-      funcCode = funcCode <> "    cx result = " <>
-        mmaToCInternal[prefactor, paramMap] <> ";\n";
-
-      Do[
-        funcCode = funcCode <>
-          "    result *= std::exp(" <>
-          mmaToCInternal[polyExps[[j]], paramMap] <>
-          " * std::log(P" <> ToString[j - 1] <> "));\n";,
-        {j, Length[polyExps]}
-      ];
-
+    Module[{sd, funcCode},
+      sd = convergentSectors[[s]];
+      funcCode = emitBaseFuncBody[
+        "integrand_conv_" <> ToString[s - 1],
+        "Convergent sector " <> ToString[sd["ConeIndex"]],
+        "result",
+        sd["FlattenedPolys"], sd["PolynomialExponents"],
+        sd["Prefactor"], sd["Dimension"], paramMap];
       funcCode = funcCode <> "    return result;\n}\n";
-
       AppendTo[integrandFuncs, funcCode];
-      AppendTo[integrandDims, dim];
+      AppendTo[integrandDims, sd["Dimension"]];
+      AppendTo[integrandTypes, "conv"];
       nConvergent++;
     ],
     {s, Length[convergentSectors]}
   ];
 
-  (* --- Generate G0 integrands for divergent sectors --- *)
-  Do[
-    Module[{dd, g0Polys, g0PolyExps, g0Pf, g0Dim, funcName, funcCode},
-      dd       = divergentSectors[[s]];
-      g0Polys  = dd["G0FlatPolys"];
-      g0PolyExps = dd["G0PolyExponents"];
-      g0Pf     = dd["G0Prefactor"];
-      g0Dim    = dd["G0Dimension"];
-      funcName = "integrand_g0_" <> ToString[s - 1];
+  If[!isIBP,
+    (* ============ Subtraction mode: g0 / g1 / remainder ============ *)
 
-      funcCode = "inline cx " <> funcName <>
-        "(const double* y, const double* params) {\n";
-      funcCode = funcCode <>
-        "    // G0 for divergent sector " <>
-        ToString[dd["ConeIndex"]] <> "\n";
-      funcCode = funcCode <>
-        "    double log_y[" <> ToString[g0Dim] <> "];\n";
-      funcCode = funcCode <>
-        "    for (int i = 0; i < " <> ToString[g0Dim] <>
-        "; i++)\n";
-      funcCode = funcCode <>
-        "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
+    (* --- G0 integrands --- *)
+    Do[
+      Module[{dd, funcCode},
+        dd = divergentSectors[[s]];
+        funcCode = emitBaseFuncBody[
+          "integrand_g0_" <> ToString[s - 1],
+          "G0 for divergent sector " <> ToString[dd["ConeIndex"]],
+          "result",
+          dd["G0FlatPolys"], dd["G0PolyExponents"],
+          dd["G0Prefactor"], dd["G0Dimension"], paramMap];
+        funcCode = funcCode <> "    return result;\n}\n";
+        AppendTo[integrandFuncs, funcCode];
+        AppendTo[integrandDims, dd["G0Dimension"]];
+        nG0++;
+      ],
+      {s, Length[divergentSectors]}
+    ];
 
-      Do[
+    (* --- G1 integrands --- *)
+    Do[
+      Module[{dd, logIns, funcCode},
+        dd     = divergentSectors[[s]];
+        logIns = dd["G1LogInsertions"];
+        funcCode = emitBaseFuncBody[
+          "integrand_g1_" <> ToString[s - 1],
+          "G1 for divergent sector " <> ToString[dd["ConeIndex"]],
+          "g0_val",
+          dd["G0FlatPolys"], dd["G0PolyExponents"],
+          dd["G0Prefactor"], dd["G0Dimension"], paramMap];
         funcCode = funcCode <>
-          GenerateMonomialSumCpp[g0Polys[[j]], j - 1, paramMap, g0Dim] <>
-          "\n\n";,
-        {j, Length[g0Polys]}
-      ];
+          emitLogTail[logIns["VariableTerms"], logIns["PolynomialTerms"],
+                      paramMap, True];
+        funcCode = funcCode <> "\n    return g0_val * log_sum;\n}\n";
+        AppendTo[integrandFuncs, funcCode];
+        AppendTo[integrandDims, dd["G0Dimension"]];
+        nG1++;
+      ],
+      {s, Length[divergentSectors]}
+    ];
 
-      funcCode = funcCode <> "    cx result = " <>
-        mmaToCInternal[g0Pf, paramMap] <> ";\n";
+    (* --- Remainder integrands (unique structure: Pfull/Psimp) --- *)
+    Do[
+      Module[{dd, rem, fullPolys, simpPolys, remPf, remDim, k,
+              divVarExp, polyExpsRem, funcName, funcCode},
+        dd        = divergentSectors[[s]];
+        rem       = dd["Remainder"];
+        fullPolys = rem["FullPolys"];
+        simpPolys = rem["SimplifiedPolys"];
+        remPf     = rem["Prefactor"];
+        remDim    = rem["Dimension"];
+        k         = rem["DivVarIndex"] - 1;
+        divVarExp = rem["DivVarExp"];
+        polyExpsRem = rem["PolynomialExponents"];
+        funcName  = "integrand_rem_" <> ToString[s - 1];
 
-      Do[
+        funcCode = "inline cx " <> funcName <>
+          "(const double* y, const double* params) {\n";
         funcCode = funcCode <>
-          "    result *= std::exp(" <>
-          mmaToCInternal[g0PolyExps[[j]], paramMap] <>
-          " * std::log(P" <> ToString[j - 1] <> "));\n";,
-        {j, Length[g0PolyExps]}
-      ];
-
-      funcCode = funcCode <> "    return result;\n}\n";
-
-      AppendTo[integrandFuncs, funcCode];
-      AppendTo[integrandDims, g0Dim];
-      nG0++;
-    ],
-    {s, Length[divergentSectors]}
-  ];
-
-  (* --- Generate G1 integrands for divergent sectors --- *)
-  Do[
-    Module[{dd, g0Polys, g0PolyExps, g0Pf, g0Dim, funcName, funcCode,
-            logIns, varTerms, polyTerms},
-      dd       = divergentSectors[[s]];
-      g0Polys  = dd["G0FlatPolys"];
-      g0PolyExps = dd["G0PolyExponents"];
-      g0Pf     = dd["G0Prefactor"];
-      g0Dim    = dd["G0Dimension"];
-      logIns   = dd["G1LogInsertions"];
-      varTerms  = logIns["VariableTerms"];
-      polyTerms = logIns["PolynomialTerms"];
-      funcName = "integrand_g1_" <> ToString[s - 1];
-
-      funcCode = "inline cx " <> funcName <>
-        "(const double* y, const double* params) {\n";
-      funcCode = funcCode <>
-        "    // G1 for divergent sector " <>
-        ToString[dd["ConeIndex"]] <> "\n";
-      funcCode = funcCode <>
-        "    double log_y[" <> ToString[g0Dim] <> "];\n";
-      funcCode = funcCode <>
-        "    for (int i = 0; i < " <> ToString[g0Dim] <>
-        "; i++)\n";
-      funcCode = funcCode <>
-        "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
-
-      Do[
+          "    // Remainder for divergent sector " <>
+          ToString[dd["ConeIndex"]] <> "\n";
         funcCode = funcCode <>
-          GenerateMonomialSumCpp[g0Polys[[j]], j - 1, paramMap, g0Dim] <>
-          "\n\n";,
-        {j, Length[g0Polys]}
-      ];
-
-      funcCode = funcCode <> "    cx g0_val = " <>
-        mmaToCInternal[g0Pf, paramMap] <> ";\n";
-
-      Do[
+          "    double log_y[" <> ToString[remDim] <> "];\n";
         funcCode = funcCode <>
-          "    g0_val *= std::exp(" <>
-          mmaToCInternal[g0PolyExps[[j]], paramMap] <>
-          " * std::log(P" <> ToString[j - 1] <> "));\n";,
-        {j, Length[g0PolyExps]}
-      ];
-
-      funcCode = funcCode <> "\n    // Log insertion factors\n";
-      funcCode = funcCode <> "    cx log_sum(0.0, 0.0);\n";
-
-      Do[
-        Module[{coeff, varIdx},
-          coeff  = vt[[1]];
-          varIdx = vt[[2]] - 1;
-          funcCode = funcCode <>
-            "    log_sum += " <>
-            mmaToCInternal[coeff, paramMap] <>
-            " * log_y[" <> ToString[varIdx] <> "];\n";
-        ],
-        {vt, varTerms}
-      ];
-
-      Do[
-        Module[{coeff, polyIdx},
-          coeff   = pt[[1]];
-          polyIdx = pt[[2]] - 1;
-          funcCode = funcCode <>
-            "    log_sum += " <>
-            mmaToCInternal[coeff, paramMap] <>
-            " * std::log(P" <> ToString[polyIdx] <> ");\n";
-        ],
-        {pt, polyTerms}
-      ];
-
-      funcCode = funcCode <>
-        "\n    return g0_val * log_sum;\n}\n";
-
-      AppendTo[integrandFuncs, funcCode];
-      AppendTo[integrandDims, g0Dim];
-      nG1++;
-    ],
-    {s, Length[divergentSectors]}
-  ];
-
-  (* --- Generate remainder integrands for divergent sectors --- *)
-  Do[
-    Module[{dd, rem, fullPolys, simpPolys, remPf, remDim, k,
-            divVarExp, polyExpsRem, funcName, funcCode},
-      dd        = divergentSectors[[s]];
-      rem       = dd["Remainder"];
-      fullPolys = rem["FullPolys"];
-      simpPolys = rem["SimplifiedPolys"];
-      remPf     = rem["Prefactor"];
-      remDim    = rem["Dimension"];
-      k         = rem["DivVarIndex"] - 1; (* 0-based *)
-      divVarExp = rem["DivVarExp"];
-      polyExpsRem = rem["PolynomialExponents"];
-      funcName = "integrand_rem_" <> ToString[s - 1];
-
-      funcCode = "inline cx " <> funcName <>
-        "(const double* y, const double* params) {\n";
-      funcCode = funcCode <>
-        "    // Remainder for divergent sector " <>
-        ToString[dd["ConeIndex"]] <> "\n";
-      funcCode = funcCode <>
-        "    double log_y[" <> ToString[remDim] <> "];\n";
-      funcCode = funcCode <>
-        "    for (int i = 0; i < " <> ToString[remDim] <>
-        "; i++)\n";
-      funcCode = funcCode <>
-        "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
-
-      funcCode = funcCode <> "    // Full polynomials\n";
-      Do[
+          "    for (int i = 0; i < " <> ToString[remDim] <> "; i++)\n";
         funcCode = funcCode <>
-          StringReplace[
-            GenerateMonomialSumCpp[fullPolys[[j]], j - 1, paramMap,
-                                   remDim, "log_y"],
-            "P" <> ToString[j - 1] -> "Pfull" <> ToString[j - 1]
-          ] <> "\n\n";,
-        {j, Length[fullPolys]}
-      ];
+          "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
 
-      funcCode = funcCode <> "    // Simplified polynomials (y_k = 0)\n";
-      Do[
-        funcCode = funcCode <>
-          StringReplace[
-            GenerateMonomialSumCpp[simpPolys[[j]], j - 1, paramMap,
-                                   remDim, "log_y"],
-            "P" <> ToString[j - 1] -> "Psimp" <> ToString[j - 1]
-          ] <> "\n\n";,
-        {j, Length[simpPolys]}
-      ];
-
-      funcCode = funcCode <> "    cx full_prod = ";
-      If[Length[polyExpsRem] == 1,
-        funcCode = funcCode <>
-          "std::exp(" <> mmaToCInternal[polyExpsRem[[1]], paramMap] <>
-          " * std::log(Pfull0));\n";,
-        funcCode = funcCode <> "cx(1.0, 0.0);\n";
+        funcCode = funcCode <> "    // Full polynomials\n";
         Do[
           funcCode = funcCode <>
-            "    full_prod *= std::exp(" <>
-            mmaToCInternal[polyExpsRem[[j]], paramMap] <>
-            " * std::log(Pfull" <> ToString[j - 1] <> "));\n";,
-          {j, Length[polyExpsRem]}
+            StringReplace[
+              GenerateMonomialSumCpp[fullPolys[[j]], j - 1, paramMap,
+                                     remDim, "log_y"],
+              "P" <> ToString[j - 1] -> "Pfull" <> ToString[j - 1]
+            ] <> "\n\n";,
+          {j, Length[fullPolys]}
         ];
-      ];
 
-      funcCode = funcCode <> "    cx simp_prod = ";
-      If[Length[polyExpsRem] == 1,
-        funcCode = funcCode <>
-          "std::exp(" <> mmaToCInternal[polyExpsRem[[1]], paramMap] <>
-          " * std::log(Psimp0));\n";,
-        funcCode = funcCode <> "cx(1.0, 0.0);\n";
+        funcCode = funcCode <> "    // Simplified polynomials (y_k = 0)\n";
         Do[
           funcCode = funcCode <>
-            "    simp_prod *= std::exp(" <>
-            mmaToCInternal[polyExpsRem[[j]], paramMap] <>
-            " * std::log(Psimp" <> ToString[j - 1] <> "));\n";,
-          {j, Length[polyExpsRem]}
+            StringReplace[
+              GenerateMonomialSumCpp[simpPolys[[j]], j - 1, paramMap,
+                                     remDim, "log_y"],
+              "P" <> ToString[j - 1] -> "Psimp" <> ToString[j - 1]
+            ] <> "\n\n";,
+          {j, Length[simpPolys]}
         ];
-      ];
 
-      funcCode = funcCode <>
-        "\n    cx yk_factor = std::exp(" <>
-        mmaToCInternal[divVarExp - 1, paramMap] <>
-        " * log_y[" <> ToString[k] <> "]);\n";
+        funcCode = funcCode <> "    cx full_prod = ";
+        If[Length[polyExpsRem] == 1,
+          funcCode = funcCode <>
+            "std::exp(" <> mmaToCInternal[polyExpsRem[[1]], paramMap] <>
+            " * std::log(Pfull0));\n";,
+          funcCode = funcCode <> "cx(1.0, 0.0);\n";
+          Do[
+            funcCode = funcCode <>
+              "    full_prod *= std::exp(" <>
+              mmaToCInternal[polyExpsRem[[j]], paramMap] <>
+              " * std::log(Pfull" <> ToString[j - 1] <> "));\n";,
+            {j, Length[polyExpsRem]}
+          ];
+        ];
 
-      funcCode = funcCode <>
-        "    return " <> mmaToCInternal[remPf, paramMap] <>
-        " * yk_factor * (full_prod - simp_prod);\n}\n";
+        funcCode = funcCode <> "    cx simp_prod = ";
+        If[Length[polyExpsRem] == 1,
+          funcCode = funcCode <>
+            "std::exp(" <> mmaToCInternal[polyExpsRem[[1]], paramMap] <>
+            " * std::log(Psimp0));\n";,
+          funcCode = funcCode <> "cx(1.0, 0.0);\n";
+          Do[
+            funcCode = funcCode <>
+              "    simp_prod *= std::exp(" <>
+              mmaToCInternal[polyExpsRem[[j]], paramMap] <>
+              " * std::log(Psimp" <> ToString[j - 1] <> "));\n";,
+            {j, Length[polyExpsRem]}
+          ];
+        ];
 
-      AppendTo[integrandFuncs, funcCode];
-      AppendTo[integrandDims, remDim];
-      nRemainder++;
-    ],
-    {s, Length[divergentSectors]}
+        funcCode = funcCode <>
+          "\n    cx yk_factor = std::exp(" <>
+          mmaToCInternal[divVarExp - 1, paramMap] <>
+          " * log_y[" <> ToString[k] <> "]);\n";
+
+        funcCode = funcCode <>
+          "    return " <> mmaToCInternal[remPf, paramMap] <>
+          " * yk_factor * (full_prod - simp_prod);\n}\n";
+
+        AppendTo[integrandFuncs, funcCode];
+        AppendTo[integrandDims, remDim];
+        nRemainder++;
+      ],
+      {s, Length[divergentSectors]}
+    ];
+    ,
+    (* ================= IBP mode: boundary + terms ================= *)
+    Do[
+      Module[{ibpSD, bndData, ibpTerms, sIdx, sectorFuncs},
+        ibpSD    = ibpSectors[[s]];
+        bndData  = ibpSD["BoundaryData"];
+        ibpTerms = ibpSD["IBPTerms"];
+        sIdx     = s - 1;
+        sectorFuncs = <|"SectorIndex" -> sIdx,
+                        "ConeIndex" -> ibpSD["ConeIndex"]|>;
+
+        (* Boundary base (order 0) *)
+        Module[{funcCode},
+          funcCode = emitBaseFuncBody[
+            "integrand_ibp_bnd_" <> ToString[sIdx] <> "_base",
+            "IBP boundary base, sector " <> ToString[ibpSD["ConeIndex"]],
+            "result",
+            bndData["FlatPolys"], bndData["PolyExponents"],
+            bndData["Prefactor"], bndData["Dimension"], paramMap];
+          funcCode = funcCode <> "    return result;\n}\n";
+          AppendTo[integrandFuncs, funcCode];
+          AppendTo[integrandDims, bndData["Dimension"]];
+          AppendTo[integrandTypes, "ibp"];
+          sectorFuncs["BndBaseFuncId"] = Length[integrandFuncs] - 1;
+          nIBPFuncs++;
+        ];
+
+        (* Boundary log (order 1) *)
+        Module[{logIns, funcCode},
+          logIns = bndData["LogInsertions"];
+          funcCode = emitBaseFuncBody[
+            "integrand_ibp_bnd_" <> ToString[sIdx] <> "_log",
+            "IBP boundary log, sector " <> ToString[ibpSD["ConeIndex"]],
+            "base_val",
+            bndData["FlatPolys"], bndData["PolyExponents"],
+            bndData["Prefactor"], bndData["Dimension"], paramMap];
+          funcCode = funcCode <>
+            emitLogTail[logIns["VariableTerms"], logIns["PolynomialTerms"],
+                        paramMap, True];
+          funcCode = funcCode <> "\n    return base_val * log_sum;\n}\n";
+          AppendTo[integrandFuncs, funcCode];
+          AppendTo[integrandDims, bndData["Dimension"]];
+          AppendTo[integrandTypes, "ibp"];
+          sectorFuncs["BndLogFuncId"] = Length[integrandFuncs] - 1;
+          nIBPFuncs++;
+        ];
+
+        (* IBP term functions (base + log per term) *)
+        sectorFuncs["TermFuncIds"] = {};
+        Do[
+          Module[{termData, logIns, tIdx, funcCodeBase, funcCodeLog},
+            termData  = ibpTerms[[t]];
+            logIns    = termData["LogInsertions"];
+            tIdx      = t - 1;
+
+            funcCodeBase = emitBaseFuncBody[
+              "integrand_ibp_" <> ToString[sIdx] <> "_t" <> ToString[tIdx] <>
+                "_base",
+              "IBP term " <> ToString[tIdx] <> " base, sector " <>
+                ToString[ibpSD["ConeIndex"]],
+              "result",
+              termData["FlatPolys"], termData["PolyExponents"],
+              termData["Prefactor"], termData["Dimension"], paramMap];
+            funcCodeBase = funcCodeBase <> "    return result;\n}\n";
+            AppendTo[integrandFuncs, funcCodeBase];
+            AppendTo[integrandDims, termData["Dimension"]];
+            AppendTo[integrandTypes, "ibp"];
+
+            funcCodeLog = emitBaseFuncBody[
+              "integrand_ibp_" <> ToString[sIdx] <> "_t" <> ToString[tIdx] <>
+                "_log",
+              "IBP term " <> ToString[tIdx] <> " log, sector " <>
+                ToString[ibpSD["ConeIndex"]],
+              "base_val",
+              termData["FlatPolys"], termData["PolyExponents"],
+              termData["Prefactor"], termData["Dimension"], paramMap];
+            funcCodeLog = funcCodeLog <>
+              emitLogTail[logIns["VariableTerms"], logIns["PolynomialTerms"],
+                          paramMap, False];
+            funcCodeLog = funcCodeLog <> "\n    return base_val * log_sum;\n}\n";
+            AppendTo[integrandFuncs, funcCodeLog];
+            AppendTo[integrandDims, termData["Dimension"]];
+            AppendTo[integrandTypes, "ibp"];
+
+            AppendTo[sectorFuncs["TermFuncIds"],
+              <|"BaseFuncId" -> Length[integrandFuncs] - 2,
+                "LogFuncId"  -> Length[integrandFuncs] - 1,
+                "Coeff0"     -> termData["Coeff0"],
+                "Coeff1"     -> termData["Coeff1"]|>
+            ];
+            nIBPFuncs += 2;
+          ],
+          {t, Length[ibpTerms]}
+        ];
+
+        AppendTo[ibpFuncMap, sectorFuncs];
+      ],
+      {s, Length[ibpSectors]}
+    ];
   ];
 
   nIntegrands = Length[integrandFuncs];
 
   (* --- Assemble the full C++ file --- *)
-  code = "// Auto-generated by TropicalEval`GenerateCppMonteCarlo\n";
-  code = code <> "// " <> ToString[nConvergent] <> " convergent, " <>
+  code = If[isIBP,
+    "// Auto-generated by TropicalEval`GenerateCppMonteCarloIBP\n" <>
+    "// " <> ToString[nConvergent] <> " convergent, " <>
+    ToString[nIBPFuncs] <> " IBP integrands\n\n",
+    "// Auto-generated by TropicalEval`GenerateCppMonteCarlo\n" <>
+    "// " <> ToString[nConvergent] <> " convergent, " <>
     ToString[nG0] <> " G0, " <> ToString[nG1] <> " G1, " <>
-    ToString[nRemainder] <> " remainder integrands\n\n";
+    ToString[nRemainder] <> " remainder integrands\n\n"];
 
   code = code <> "#include <complex>\n";
   code = code <> "#include <cmath>\n";
@@ -1598,58 +1692,80 @@ Module[
 
   code = code <> "using cx = std::complex<double>;\n\n";
 
-  Do[
-    code = code <> integrandFuncs[[i]] <> "\n";,
-    {i, nIntegrands}
-  ];
+  Do[code = code <> integrandFuncs[[i]] <> "\n";, {i, nIntegrands}];
 
   code = code <>
-    "// Function pointer type\n" <>
-    "using IntegrandFunc = cx(*)(const double*, const double*);\n\n";
+    If[isIBP,
+      "using IntegrandFunc = cx(*)(const double*, const double*);\n\n",
+      "// Function pointer type\n" <>
+      "using IntegrandFunc = cx(*)(const double*, const double*);\n\n"];
 
-  code = code <> "IntegrandFunc integrand_table[] = {\n";
-  Module[{allNames},
-    allNames = {};
-    Do[AppendTo[allNames, "integrand_conv_" <> ToString[i - 1]],
-       {i, nConvergent}];
-    Do[AppendTo[allNames, "integrand_g0_" <> ToString[i - 1]],
-       {i, nG0}];
-    Do[AppendTo[allNames, "integrand_g1_" <> ToString[i - 1]],
-       {i, nG1}];
-    Do[AppendTo[allNames, "integrand_rem_" <> ToString[i - 1]],
-       {i, nRemainder}];
-    code = code <> "    " <>
-      StringRiffle[allNames, ",\n    "] <> "\n";
-  ];
-  code = code <> "};\n\n";
+  (* Function table.  The two towers built the name list differently (conv via
+     hard-coded loops, IBP via regex over the emitted code) but produced the
+     SAME ordering; we build it from regex in both modes (identical bytes). *)
+  allFuncNames = Table[
+    StringCases[integrandFuncs[[i]],
+      RegularExpression["inline cx (\\w+)\\("] -> "$1"][[1]],
+    {i, nIntegrands}];
+
+  code = code <> "IntegrandFunc integrand_table[] = {\n    " <>
+    StringRiffle[allFuncNames, ",\n    "] <> "\n};\n\n";
 
   code = code <> "int integrand_dim[] = {" <>
     StringRiffle[ToString /@ integrandDims, ", "] <> "};\n";
-  code = code <> "const int N_INTEGRANDS = " <>
-    ToString[nIntegrands] <> ";\n";
-  code = code <> "const int N_PARAMS = " <>
-    ToString[nParams] <> ";\n";
-  code = code <> "const int MAX_DIM = " <>
-    ToString[maxDim] <> ";\n\n";
 
-  <|"Defs" -> code, "Dims" -> integrandDims,
-    "NConvergent" -> nConvergent, "NG0" -> nG0,
-    "NG1" -> nG1, "NRemainder" -> nRemainder,
-    "NTotal" -> nIntegrands, "NParams" -> nParams|>
+  If[isIBP,
+    code = code <> "int integrand_type[] = {" <>
+      StringRiffle[If[# === "conv", "0", "1"] & /@ integrandTypes, ", "] <>
+      "};\n"];
+
+  code = code <> "const int N_INTEGRANDS = " <> ToString[nIntegrands] <> ";\n";
+  If[isIBP,
+    code = code <> "const int N_CONV = " <> ToString[nConvergent] <> ";\n"];
+  code = code <> "const int N_PARAMS = " <> ToString[nParams] <> ";\n";
+  code = code <> "const int MAX_DIM = " <> ToString[maxDim] <> ";\n\n";
+
+  If[isIBP,
+    <|"Defs" -> code, "Dims" -> integrandDims,
+      "NConvergent" -> nConvergent, "NIBPFuncs" -> nIBPFuncs,
+      "NTotal" -> nIntegrands, "NParams" -> nParams,
+      "IsIBP" -> True, "IBPFuncMap" -> ibpFuncMap|>,
+    <|"Defs" -> code, "Dims" -> integrandDims,
+      "NConvergent" -> nConvergent, "NG0" -> nG0,
+      "NG1" -> nG1, "NRemainder" -> nRemainder,
+      "NTotal" -> nIntegrands, "NParams" -> nParams,
+      "IsIBP" -> False|>
+  ]
 ];
 
 (* --------------------------------------------------------------------------
-   emitMonteCarloMain — the plain-MC main(), emitted VERBATIM as before so
-   "Integrator"->"MonteCarlo" stays byte-identical (B0).  Reads a kinematic
-   file, loops kp under OpenMP, Welford per sector, writes Re Im ReErr ImErr.
+   emitMain — the SINGLE main() emitter (plan.md §5.2).  kind in {"MC","VEGAS"};
+   batch -> True selects the chunked-ncomp Vegas mode (the old standalone
+   batched-Vegas main folds in here; Vegas + convergent / lifted-convergent
+   only).  The result-assembly is routed by info["IsIBP"]: the plain path sums all
+   integrands into one line per kp; the IBP path writes the convergent sum on
+   line 0 and each IBP function on its own line.  The per-branch C++ bodies are
+   the Phase-1 emitters' bodies verbatim, so the emitted bytes are unchanged
+   (golden-master regression, cross-check #25).  Batch is ignored on the IBP
+   path (per-kp Vegas fallback, plan.md §5.1).
    -------------------------------------------------------------------------- *)
-Options[emitMonteCarloMain] = {"NSamples" -> 1000000, "SeedBase" -> 42};
-emitMonteCarloMain[info_Association, OptionsPattern[]] :=
-Module[{code, nSamples, seedBase},
+Options[emitMain] = Join[
+  {"NSamples" -> 1000000, "SeedBase" -> 42},
+  $vegasOptionDefaults
+];
+emitMain[info_Association, integrator_String, batch_:False,
+         OptionsPattern[]] :=
+Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
   nSamples = OptionValue["NSamples"];
   seedBase = OptionValue["SeedBase"];
+  epsrel   = ToString[CForm[N[OptionValue["VegasEpsRel"]]]];
+  epsabs   = ToString[CForm[N[OptionValue["VegasEpsAbs"]]]];
+  seed     = ToString[OptionValue["VegasSeed"]];
+  maxComp  = ToString[OptionValue["CubaMaxComp"]];
+  isIBP    = TrueQ[info["IsIBP"]];
 
-  (* Main function *)
+  Which[
+    integrator === "MC" && !isIBP,
   code = "int main(int argc, char* argv[]) {\n";
   code = code <> "    if (argc < 3) {\n";
   code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [n_samples] [n_threads]\" << std::endl;\n";
@@ -1796,143 +1912,114 @@ Module[{code, nSamples, seedBase},
   code = code <> "    std::cerr << \"Done. Processed \" << n_kp << \" kinematic points.\" << std::endl;\n";
   code = code <> "    return 0;\n";
   code = code <> "}\n";
-  code
-];
-
-(* --------------------------------------------------------------------------
-   emitVegasMain — per-kp CUBA Vegas main (the study's winning sampler).
-   CUBA-guarded: the file COMPILES without CUBA (the binary then refuses to run
-   Vegas); with -DTROPICAL_USE_CUBA it links libcuba and runs.  Budget rule:
-   maxeval per sector == NSamples (the study's fairness convention; with the
-   default tiny VegasEpsRel, maxeval is the binding constraint).  The CUBA call
-   and parameters are copied verbatim from TEST/bench.cpp (do not re-derive).
-   ncomp = 2 because the integrand is genuinely complex.  Per-kp error bar is
-   sqrt(sum_s reportedErr_s^2) -- the same quadrature-sum convention the MC main
-   uses -- so the Re Im ReErr ImErr schema is unchanged.  kp are looped SERIALLY
-   (CUBA keeps global RNG/grid state and is not thread-safe across calls). *)
-Options[emitVegasMain] = {"NSamples" -> 1000000, "VegasEpsRel" -> 1.*^-12,
-   "VegasEpsAbs" -> 1.*^-300, "VegasSeed" -> 0};
-emitVegasMain[info_Association, OptionsPattern[]] :=
-Module[{code, nSamples, epsrel, epsabs, seed},
-  nSamples = OptionValue["NSamples"];
-  epsrel   = ToString[CForm[N[OptionValue["VegasEpsRel"]]]];
-  epsabs   = ToString[CForm[N[OptionValue["VegasEpsAbs"]]]];
-  seed     = ToString[OptionValue["VegasSeed"]];
-
-  code = "// TROPICAL_REQUIRES_CUBA  (CompileCpp greps for this sentinel)\n";
-  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
-  code = code <> "extern \"C\" {\n";
-  code = code <> "#include <cuba.h>\n";
-  code = code <> "}\n";
-  code = code <> "static IntegrandFunc g_fn     = nullptr;\n";
-  code = code <> "static const double* g_params = nullptr;\n";
-  code = code <> "static int           g_dim    = 0;\n";
-  code = code <> "static int cubaWrap(const int* ndim, const cubareal xx[], const int* ncomp,\n";
-  code = code <> "                    cubareal ff[], void* userdata) {\n";
-  code = code <> "    (void)ndim; (void)ncomp; (void)userdata;\n";
-  code = code <> "    double y[MAX_DIM];\n";
-  code = code <> "    for (int i = 0; i < g_dim; ++i) y[i] = (double)xx[i];\n";
-  code = code <> "    cx v = g_fn(y, g_params);\n";
-  code = code <> "    ff[0] = v.real(); ff[1] = v.imag();   // ncomp = 2 (complex integrand)\n";
-  code = code <> "    return 0;\n";
-  code = code <> "}\n";
-  code = code <> "// integrate one sector with Vegas; a 0-dim integrand (e.g. an IBP\n";
-  code = code <> "// boundary of a 1-var sector) is a constant, so eval it directly.\n";
-  code = code <> "static void vegasOne(int s, const double* params, long long maxeval,\n";
-  code = code <> "                     double epsrel, double epsabs, int seed,\n";
-  code = code <> "                     double out[2], double err[2]) {\n";
-  code = code <> "    g_fn = integrand_table[s]; g_dim = integrand_dim[s]; g_params = params;\n";
-  code = code <> "    if (g_dim == 0) {\n";
-  code = code <> "        double y0[1] = {0.0}; cx v = g_fn(y0, params);\n";
-  code = code <> "        out[0] = v.real(); out[1] = v.imag(); err[0] = 0.0; err[1] = 0.0;\n";
-  code = code <> "        return;\n";
-  code = code <> "    }\n";
-  code = code <> "    int neval = 0, fail = 0; cubareal I[2], E[2], Pr[2];\n";
-  code = code <> "    Vegas(g_dim, 2, cubaWrap, nullptr, 1, epsrel, epsabs, 0, seed,\n";
-  code = code <> "          0, (int)maxeval, 1000, 500, 1000, 0, nullptr, nullptr,\n";
-  code = code <> "          &neval, &fail, I, E, Pr);\n";
-  code = code <> "    out[0] = I[0]; out[1] = I[1]; err[0] = E[0]; err[1] = E[1];\n";
-  code = code <> "}\n";
-  code = code <> "#endif\n\n";
-
-  code = code <> "int main(int argc, char* argv[]) {\n";
+    code
+    ,
+    integrator === "MC" && isIBP,
+  code = "int main(int argc, char* argv[]) {\n";
   code = code <> "    if (argc < 3) {\n";
-  code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [maxeval] [n_threads]\" << std::endl;\n";
-  code = code <> "        return 1;\n";
-  code = code <> "    }\n\n";
-  code = code <> "    std::string input_file = argv[1];\n";
-  code = code <> "    std::string output_file = argv[2];\n";
-  code = code <> "    long long maxeval = (argc > 3) ? std::atoll(argv[3]) : " <> ToString[nSamples] <> "LL;\n\n";
+    code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [n_samples] [n_threads]\" << std::endl;\n";
+    code = code <> "        return 1;\n";
+    code = code <> "    }\n\n";
 
-  code = code <> "    std::ifstream fin(input_file);\n";
-  code = code <> "    if (!fin) { std::cerr << \"Cannot open \" << input_file << std::endl; return 1; }\n";
-  code = code <> "    std::vector<std::vector<double>> kinematic_data;\n";
-  code = code <> "    if (N_PARAMS == 0) {\n";
-  code = code <> "        int count = 1; fin >> count; if (count < 1) count = 1;\n";
-  code = code <> "        for (int i = 0; i < count; i++) kinematic_data.push_back({});\n";
-  code = code <> "    } else {\n";
-  code = code <> "        double val; std::vector<double> row;\n";
-  code = code <> "        while (fin >> val) { row.push_back(val);\n";
-  code = code <> "            if ((int)row.size() == N_PARAMS) { kinematic_data.push_back(row); row.clear(); }}\n";
-  code = code <> "    }\n";
-  code = code <> "    fin.close();\n";
-  code = code <> "    int n_kp = (int)kinematic_data.size();\n";
-  code = code <> "    std::cerr << \"Read \" << n_kp << \" kinematic points (Vegas)\" << std::endl;\n\n";
+    code = code <> "    std::string input_file = argv[1];\n";
+    code = code <> "    std::string output_file = argv[2];\n";
+    code = code <> "    int n_samples = (argc > 3) ? std::atoi(argv[3]) : " <>
+      ToString[nSamples] <> ";\n";
+    code = code <> "    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;\n";
+    code = code <> "#ifdef _OPENMP\n";
+    code = code <> "    if (n_threads == 1) n_threads = omp_get_max_threads();\n";
+    code = code <> "    omp_set_num_threads(n_threads);\n";
+    code = code <> "#endif\n\n";
 
-  code = code <> "    std::vector<std::array<double, 4>> results(n_kp);\n\n";
+    code = code <> "    std::ifstream fin(input_file);\n";
+    code = code <> "    if (!fin) { std::cerr << \"Cannot open \" << input_file << std::endl; return 1; }\n\n";
 
-  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
-  code = code <> "    { const int zero = 0; cubacores(&zero, &zero); }  // single process: deterministic, macOS-safe\n";
-  code = code <> "    const double epsrel = " <> epsrel <> ", epsabs = " <> epsabs <> ";\n";
-  code = code <> "    const int    seed   = " <> seed <> ";\n";
-  code = code <> "    for (int kp = 0; kp < n_kp; ++kp) {        // SERIAL over kp: CUBA keeps global state\n";
-  code = code <> "        const double* params = kinematic_data[kp].data();\n";
-  code = code <> "        double tre = 0, tim = 0, vre = 0, vim = 0;\n";
-  code = code <> "        for (int s = 0; s < N_INTEGRANDS; ++s) {\n";
-  code = code <> "            double I[2], E[2]; vegasOne(s, params, maxeval, epsrel, epsabs, seed, I, E);\n";
-  code = code <> "            tre += I[0]; tim += I[1];\n";
-  code = code <> "            vre += E[0]*E[0]; vim += E[1]*E[1];\n";
-  code = code <> "        }\n";
-  code = code <> "        results[kp] = {tre, tim, std::sqrt(vre), std::sqrt(vim)};\n";
-  code = code <> "    }\n";
-  code = code <> "#else\n";
-  code = code <> "    (void)maxeval;\n";
-  code = code <> "    std::cerr << \"ERROR: built without CUBA. Rebuild with -DTROPICAL_USE_CUBA \"\n";
-  code = code <> "                 \"(install CUBA), or use Integrator -> \\\"MonteCarlo\\\".\" << std::endl;\n";
-  code = code <> "    return 2;\n";
-  code = code <> "#endif\n\n";
+    code = code <> "    std::vector<std::vector<double>> kinematic_data;\n";
+    code = code <> "    if (N_PARAMS == 0) {\n";
+    code = code <> "        int count = 1; fin >> count; if (count < 1) count = 1;\n";
+    code = code <> "        for (int i = 0; i < count; i++) kinematic_data.push_back({});\n";
+    code = code <> "    } else {\n";
+    code = code <> "        double val; std::vector<double> row;\n";
+    code = code <> "        while (fin >> val) { row.push_back(val);\n";
+    code = code <> "            if ((int)row.size() == N_PARAMS) { kinematic_data.push_back(row); row.clear(); }}\n";
+    code = code <> "    }\n";
+    code = code <> "    fin.close();\n";
+    code = code <> "    int n_kp = (int)kinematic_data.size();\n";
+    code = code <> "    std::cerr << \"Read \" << n_kp << \" kinematic points\" << std::endl;\n\n";
 
-  code = code <> "    std::ofstream fout(output_file);\n";
-  code = code <> "    if (!fout) { std::cerr << \"Cannot open \" << output_file << std::endl; return 1; }\n";
-  code = code <> "    fout.precision(17);\n";
-  code = code <> "    for (int kp = 0; kp < n_kp; kp++) {\n";
-  code = code <> "        fout << results[kp][0] << \" \" << results[kp][1] << \" \"\n";
-  code = code <> "             << results[kp][2] << \" \" << results[kp][3] << \"\\n\";\n";
-  code = code <> "    }\n";
-  code = code <> "    fout.close();\n";
-  code = code <> "    std::cerr << \"Done. Processed \" << n_kp << \" kinematic points.\" << std::endl;\n";
-  code = code <> "    return 0;\n";
-  code = code <> "}\n";
-  code
-];
+    (* Output: one convergent sum + each IBP function individually,
+       per kinematic point *)
+    code = code <> "    // Output: (1 + N_IBP_FUNCS) lines per kinematic point\n";
+    code = code <> "    // Line 0: convergent sum; Lines 1..N_IBP: individual IBP functions\n";
+    code = code <> "    int n_ibp = N_INTEGRANDS - N_CONV;\n";
+    code = code <> "    std::vector<std::array<double, 4>> results((1 + n_ibp) * n_kp);\n\n";
 
-(* --------------------------------------------------------------------------
-   emitVegasBatchMain — chunked-ncomp CUBA Vegas main (opt-in, for large
-   kinematic scans).  One Vegas call per (sector, kp-chunk); the chunk's kp
-   share ONE low-discrepancy sample set (component 2c=re, 2c+1=im of the c-th
-   kp), which is the report's biggest batch lever.  Complex => 2 components per
-   kp => at most CubaMaxComp/2 kp per chunk.  Honor CubaMaxComp as a HARD ncomp
-   ceiling: above it Vegas segfaults (report sec.10).  CUBA-guarded; serial. *)
-Options[emitVegasBatchMain] = {"NSamples" -> 1000000, "VegasEpsRel" -> 1.*^-12,
-   "VegasEpsAbs" -> 1.*^-300, "VegasSeed" -> 0, "CubaMaxComp" -> 512};
-emitVegasBatchMain[info_Association, OptionsPattern[]] :=
-Module[{code, nSamples, epsrel, epsabs, seed, maxComp},
-  nSamples = OptionValue["NSamples"];
-  epsrel   = ToString[CForm[N[OptionValue["VegasEpsRel"]]]];
-  epsabs   = ToString[CForm[N[OptionValue["VegasEpsAbs"]]]];
-  seed     = ToString[OptionValue["VegasSeed"]];
-  maxComp  = ToString[OptionValue["CubaMaxComp"]];
+    code = code <> "    #pragma omp parallel for schedule(dynamic)\n";
+    code = code <> "    for (int kp = 0; kp < n_kp; kp++) {\n";
+    code = code <> "        const double* params = kinematic_data[kp].data();\n";
+    code = code <> "        uint64_t seed = " <> ToString[seedBase] <> "ULL + (uint64_t)kp;\n";
+    code = code <> "        std::mt19937_64 rng(seed);\n";
+    code = code <> "        std::uniform_real_distribution<double> dist(0.0, 1.0);\n\n";
 
+    (* Convergent sum *)
+    code = code <> "        double conv_re = 0.0, conv_im = 0.0;\n";
+    code = code <> "        double conv_var_re = 0.0, conv_var_im = 0.0;\n\n";
+
+    code = code <> "        for (int s = 0; s < N_CONV; s++) {\n";
+    code = code <> "            int dim = integrand_dim[s];\n";
+    code = code <> "            double mean_re = 0.0, mean_im = 0.0;\n";
+    code = code <> "            double M2_re = 0.0, M2_im = 0.0;\n";
+    code = code <> "            for (int k = 0; k < n_samples; k++) {\n";
+    code = code <> "                double y[MAX_DIM];\n";
+    code = code <> "                for (int i = 0; i < dim; i++) y[i] = dist(rng);\n";
+    code = code <> "                cx val = integrand_table[s](y, params);\n";
+    code = code <> "                double d_re = val.real() - mean_re;\n";
+    code = code <> "                mean_re += d_re / (k + 1);\n";
+    code = code <> "                M2_re += d_re * (val.real() - mean_re);\n";
+    code = code <> "                double d_im = val.imag() - mean_im;\n";
+    code = code <> "                mean_im += d_im / (k + 1);\n";
+    code = code <> "                M2_im += d_im * (val.imag() - mean_im);\n";
+    code = code <> "            }\n";
+    code = code <> "            conv_re += mean_re; conv_im += mean_im;\n";
+    code = code <> "            conv_var_re += M2_re / ((double)n_samples * (n_samples - 1));\n";
+    code = code <> "            conv_var_im += M2_im / ((double)n_samples * (n_samples - 1));\n";
+    code = code <> "        }\n";
+    code = code <> "        results[kp * (1 + n_ibp)] = {conv_re, conv_im, std::sqrt(conv_var_re), std::sqrt(conv_var_im)};\n\n";
+
+    (* Individual IBP functions *)
+    code = code <> "        for (int s = N_CONV; s < N_INTEGRANDS; s++) {\n";
+    code = code <> "            int dim = integrand_dim[s];\n";
+    code = code <> "            double mean_re = 0.0, mean_im = 0.0;\n";
+    code = code <> "            double M2_re = 0.0, M2_im = 0.0;\n";
+    code = code <> "            for (int k = 0; k < n_samples; k++) {\n";
+    code = code <> "                double y[MAX_DIM];\n";
+    code = code <> "                for (int i = 0; i < dim; i++) y[i] = dist(rng);\n";
+    code = code <> "                cx val = integrand_table[s](y, params);\n";
+    code = code <> "                double d_re = val.real() - mean_re;\n";
+    code = code <> "                mean_re += d_re / (k + 1);\n";
+    code = code <> "                M2_re += d_re * (val.real() - mean_re);\n";
+    code = code <> "                double d_im = val.imag() - mean_im;\n";
+    code = code <> "                mean_im += d_im / (k + 1);\n";
+    code = code <> "                M2_im += d_im * (val.imag() - mean_im);\n";
+    code = code <> "            }\n";
+    code = code <> "            int idx = kp * (1 + n_ibp) + (s - N_CONV + 1);\n";
+    code = code <> "            results[idx] = {mean_re, mean_im, std::sqrt(M2_re / ((double)n_samples * (n_samples - 1))), std::sqrt(M2_im / ((double)n_samples * (n_samples - 1)))};\n";
+    code = code <> "        }\n";
+    code = code <> "    }\n\n";
+
+    code = code <> "    std::ofstream fout(output_file);\n";
+    code = code <> "    if (!fout) { std::cerr << \"Cannot open \" << output_file << std::endl; return 1; }\n";
+    code = code <> "    fout.precision(17);\n";
+    code = code <> "    for (int i = 0; i < (int)results.size(); i++) {\n";
+    code = code <> "        fout << results[i][0] << \" \" << results[i][1] << \" \"\n";
+    code = code <> "             << results[i][2] << \" \" << results[i][3] << \"\\n\";\n";
+    code = code <> "    }\n";
+    code = code <> "    fout.close();\n";
+    code = code <> "    std::cerr << \"Done. Processed \" << n_kp << \" kinematic points.\" << std::endl;\n";
+    code = code <> "    return 0;\n}\n";
+    code
+    ,
+    integrator === "VEGAS" && batch && !isIBP,
   code = "// TROPICAL_REQUIRES_CUBA  (CompileCpp greps for this sentinel)\n";
   code = code <> "#ifdef TROPICAL_USE_CUBA\n";
   code = code <> "extern \"C\" {\n";
@@ -2029,7 +2116,207 @@ Module[{code, nSamples, epsrel, epsabs, seed, maxComp},
   code = code <> "    std::cerr << \"Done. Processed \" << n_kp << \" kinematic points (batched).\" << std::endl;\n";
   code = code <> "    return 0;\n";
   code = code <> "}\n";
-  code
+    code
+    ,
+    integrator === "VEGAS" && !batch && !isIBP,
+  code = "// TROPICAL_REQUIRES_CUBA  (CompileCpp greps for this sentinel)\n";
+  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
+  code = code <> "extern \"C\" {\n";
+  code = code <> "#include <cuba.h>\n";
+  code = code <> "}\n";
+  code = code <> "static IntegrandFunc g_fn     = nullptr;\n";
+  code = code <> "static const double* g_params = nullptr;\n";
+  code = code <> "static int           g_dim    = 0;\n";
+  code = code <> "static int cubaWrap(const int* ndim, const cubareal xx[], const int* ncomp,\n";
+  code = code <> "                    cubareal ff[], void* userdata) {\n";
+  code = code <> "    (void)ndim; (void)ncomp; (void)userdata;\n";
+  code = code <> "    double y[MAX_DIM];\n";
+  code = code <> "    for (int i = 0; i < g_dim; ++i) y[i] = (double)xx[i];\n";
+  code = code <> "    cx v = g_fn(y, g_params);\n";
+  code = code <> "    ff[0] = v.real(); ff[1] = v.imag();   // ncomp = 2 (complex integrand)\n";
+  code = code <> "    return 0;\n";
+  code = code <> "}\n";
+  code = code <> "// integrate one sector with Vegas; a 0-dim integrand (e.g. an IBP\n";
+  code = code <> "// boundary of a 1-var sector) is a constant, so eval it directly.\n";
+  code = code <> "static void vegasOne(int s, const double* params, long long maxeval,\n";
+  code = code <> "                     double epsrel, double epsabs, int seed,\n";
+  code = code <> "                     double out[2], double err[2]) {\n";
+  code = code <> "    g_fn = integrand_table[s]; g_dim = integrand_dim[s]; g_params = params;\n";
+  code = code <> "    if (g_dim == 0) {\n";
+  code = code <> "        double y0[1] = {0.0}; cx v = g_fn(y0, params);\n";
+  code = code <> "        out[0] = v.real(); out[1] = v.imag(); err[0] = 0.0; err[1] = 0.0;\n";
+  code = code <> "        return;\n";
+  code = code <> "    }\n";
+  code = code <> "    int neval = 0, fail = 0; cubareal I[2], E[2], Pr[2];\n";
+  code = code <> "    Vegas(g_dim, 2, cubaWrap, nullptr, 1, epsrel, epsabs, 0, seed,\n";
+  code = code <> "          0, (int)maxeval, 1000, 500, 1000, 0, nullptr, nullptr,\n";
+  code = code <> "          &neval, &fail, I, E, Pr);\n";
+  code = code <> "    out[0] = I[0]; out[1] = I[1]; err[0] = E[0]; err[1] = E[1];\n";
+  code = code <> "}\n";
+  code = code <> "#endif\n\n";
+
+  code = code <> "int main(int argc, char* argv[]) {\n";
+  code = code <> "    if (argc < 3) {\n";
+  code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [maxeval] [n_threads]\" << std::endl;\n";
+  code = code <> "        return 1;\n";
+  code = code <> "    }\n\n";
+  code = code <> "    std::string input_file = argv[1];\n";
+  code = code <> "    std::string output_file = argv[2];\n";
+  code = code <> "    long long maxeval = (argc > 3) ? std::atoll(argv[3]) : " <> ToString[nSamples] <> "LL;\n\n";
+
+  code = code <> "    std::ifstream fin(input_file);\n";
+  code = code <> "    if (!fin) { std::cerr << \"Cannot open \" << input_file << std::endl; return 1; }\n";
+  code = code <> "    std::vector<std::vector<double>> kinematic_data;\n";
+  code = code <> "    if (N_PARAMS == 0) {\n";
+  code = code <> "        int count = 1; fin >> count; if (count < 1) count = 1;\n";
+  code = code <> "        for (int i = 0; i < count; i++) kinematic_data.push_back({});\n";
+  code = code <> "    } else {\n";
+  code = code <> "        double val; std::vector<double> row;\n";
+  code = code <> "        while (fin >> val) { row.push_back(val);\n";
+  code = code <> "            if ((int)row.size() == N_PARAMS) { kinematic_data.push_back(row); row.clear(); }}\n";
+  code = code <> "    }\n";
+  code = code <> "    fin.close();\n";
+  code = code <> "    int n_kp = (int)kinematic_data.size();\n";
+  code = code <> "    std::cerr << \"Read \" << n_kp << \" kinematic points (Vegas)\" << std::endl;\n\n";
+
+  code = code <> "    std::vector<std::array<double, 4>> results(n_kp);\n\n";
+
+  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
+  code = code <> "    { const int zero = 0; cubacores(&zero, &zero); }  // single process: deterministic, macOS-safe\n";
+  code = code <> "    const double epsrel = " <> epsrel <> ", epsabs = " <> epsabs <> ";\n";
+  code = code <> "    const int    seed   = " <> seed <> ";\n";
+  code = code <> "    for (int kp = 0; kp < n_kp; ++kp) {        // SERIAL over kp: CUBA keeps global state\n";
+  code = code <> "        const double* params = kinematic_data[kp].data();\n";
+  code = code <> "        double tre = 0, tim = 0, vre = 0, vim = 0;\n";
+  code = code <> "        for (int s = 0; s < N_INTEGRANDS; ++s) {\n";
+  code = code <> "            double I[2], E[2]; vegasOne(s, params, maxeval, epsrel, epsabs, seed, I, E);\n";
+  code = code <> "            tre += I[0]; tim += I[1];\n";
+  code = code <> "            vre += E[0]*E[0]; vim += E[1]*E[1];\n";
+  code = code <> "        }\n";
+  code = code <> "        results[kp] = {tre, tim, std::sqrt(vre), std::sqrt(vim)};\n";
+  code = code <> "    }\n";
+  code = code <> "#else\n";
+  code = code <> "    (void)maxeval;\n";
+  code = code <> "    std::cerr << \"ERROR: built without CUBA. Rebuild with -DTROPICAL_USE_CUBA \"\n";
+  code = code <> "                 \"(install CUBA), or use Integrator -> \\\"MonteCarlo\\\".\" << std::endl;\n";
+  code = code <> "    return 2;\n";
+  code = code <> "#endif\n\n";
+
+  code = code <> "    std::ofstream fout(output_file);\n";
+  code = code <> "    if (!fout) { std::cerr << \"Cannot open \" << output_file << std::endl; return 1; }\n";
+  code = code <> "    fout.precision(17);\n";
+  code = code <> "    for (int kp = 0; kp < n_kp; kp++) {\n";
+  code = code <> "        fout << results[kp][0] << \" \" << results[kp][1] << \" \"\n";
+  code = code <> "             << results[kp][2] << \" \" << results[kp][3] << \"\\n\";\n";
+  code = code <> "    }\n";
+  code = code <> "    fout.close();\n";
+  code = code <> "    std::cerr << \"Done. Processed \" << n_kp << \" kinematic points.\" << std::endl;\n";
+  code = code <> "    return 0;\n";
+  code = code <> "}\n";
+    code
+    ,
+    (* IBP path: batched Vegas falls back to per-kp (plan.md §5.1) *)
+    integrator === "VEGAS" && isIBP,
+  code = "// TROPICAL_REQUIRES_CUBA  (CompileCpp greps for this sentinel)\n";
+  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
+  code = code <> "extern \"C\" {\n";
+  code = code <> "#include <cuba.h>\n";
+  code = code <> "}\n";
+  code = code <> "static IntegrandFunc g_fn     = nullptr;\n";
+  code = code <> "static const double* g_params = nullptr;\n";
+  code = code <> "static int           g_dim    = 0;\n";
+  code = code <> "static int cubaWrap(const int* ndim, const cubareal xx[], const int* ncomp,\n";
+  code = code <> "                    cubareal ff[], void* userdata) {\n";
+  code = code <> "    (void)ndim; (void)ncomp; (void)userdata;\n";
+  code = code <> "    double y[MAX_DIM];\n";
+  code = code <> "    for (int i = 0; i < g_dim; ++i) y[i] = (double)xx[i];\n";
+  code = code <> "    cx v = g_fn(y, g_params);\n";
+  code = code <> "    ff[0] = v.real(); ff[1] = v.imag();\n";
+  code = code <> "    return 0;\n";
+  code = code <> "}\n";
+  code = code <> "// integrate one function with Vegas; a 0-dim integrand (e.g. the IBP\n";
+  code = code <> "// boundary of a 1-var sector) is a constant, so eval it directly.\n";
+  code = code <> "static void vegasOne(int s, const double* params, long long maxeval,\n";
+  code = code <> "                     double epsrel, double epsabs, int seed,\n";
+  code = code <> "                     double out[2], double err[2]) {\n";
+  code = code <> "    g_fn = integrand_table[s]; g_dim = integrand_dim[s]; g_params = params;\n";
+  code = code <> "    if (g_dim == 0) {\n";
+  code = code <> "        double y0[1] = {0.0}; cx v = g_fn(y0, params);\n";
+  code = code <> "        out[0] = v.real(); out[1] = v.imag(); err[0] = 0.0; err[1] = 0.0;\n";
+  code = code <> "        return;\n";
+  code = code <> "    }\n";
+  code = code <> "    int neval = 0, fail = 0; cubareal I[2], E[2], Pr[2];\n";
+  code = code <> "    Vegas(g_dim, 2, cubaWrap, nullptr, 1, epsrel, epsabs, 0, seed,\n";
+  code = code <> "          0, (int)maxeval, 1000, 500, 1000, 0, nullptr, nullptr,\n";
+  code = code <> "          &neval, &fail, I, E, Pr);\n";
+  code = code <> "    out[0] = I[0]; out[1] = I[1]; err[0] = E[0]; err[1] = E[1];\n";
+  code = code <> "}\n";
+  code = code <> "#endif\n\n";
+
+  code = code <> "int main(int argc, char* argv[]) {\n";
+  code = code <> "    if (argc < 3) {\n";
+  code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [maxeval] [n_threads]\" << std::endl;\n";
+  code = code <> "        return 1;\n";
+  code = code <> "    }\n\n";
+  code = code <> "    std::string input_file = argv[1];\n";
+  code = code <> "    std::string output_file = argv[2];\n";
+  code = code <> "    long long maxeval = (argc > 3) ? std::atoll(argv[3]) : " <> ToString[nSamples] <> "LL;\n\n";
+  code = code <> "    std::ifstream fin(input_file);\n";
+  code = code <> "    if (!fin) { std::cerr << \"Cannot open \" << input_file << std::endl; return 1; }\n";
+  code = code <> "    std::vector<std::vector<double>> kinematic_data;\n";
+  code = code <> "    if (N_PARAMS == 0) {\n";
+  code = code <> "        int count = 1; fin >> count; if (count < 1) count = 1;\n";
+  code = code <> "        for (int i = 0; i < count; i++) kinematic_data.push_back({});\n";
+  code = code <> "    } else {\n";
+  code = code <> "        double val; std::vector<double> row;\n";
+  code = code <> "        while (fin >> val) { row.push_back(val);\n";
+  code = code <> "            if ((int)row.size() == N_PARAMS) { kinematic_data.push_back(row); row.clear(); }}\n";
+  code = code <> "    }\n";
+  code = code <> "    fin.close();\n";
+  code = code <> "    int n_kp = (int)kinematic_data.size();\n";
+  code = code <> "    std::cerr << \"Read \" << n_kp << \" kinematic points (Vegas IBP)\" << std::endl;\n\n";
+  code = code <> "    int n_ibp = N_INTEGRANDS - N_CONV;\n";
+  code = code <> "    std::vector<std::array<double, 4>> results((1 + n_ibp) * n_kp);\n\n";
+
+  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
+  code = code <> "    { const int zero = 0; cubacores(&zero, &zero); }\n";
+  code = code <> "    const double epsrel = " <> epsrel <> ", epsabs = " <> epsabs <> ";\n";
+  code = code <> "    const int    seed   = " <> seed <> ";\n";
+  code = code <> "    for (int kp = 0; kp < n_kp; ++kp) {\n";
+  code = code <> "        const double* params = kinematic_data[kp].data();\n";
+  code = code <> "        // convergent sectors (s < N_CONV) summed into line 0\n";
+  code = code <> "        double cre = 0, cim = 0, cvre = 0, cvim = 0;\n";
+  code = code <> "        for (int s = 0; s < N_CONV; ++s) {\n";
+  code = code <> "            double I[2], E[2]; vegasOne(s, params, maxeval, epsrel, epsabs, seed, I, E);\n";
+  code = code <> "            cre += I[0]; cim += I[1]; cvre += E[0]*E[0]; cvim += E[1]*E[1];\n";
+  code = code <> "        }\n";
+  code = code <> "        results[kp * (1 + n_ibp)] = {cre, cim, std::sqrt(cvre), std::sqrt(cvim)};\n";
+  code = code <> "        // each IBP function (s >= N_CONV) on its own line\n";
+  code = code <> "        for (int s = N_CONV; s < N_INTEGRANDS; ++s) {\n";
+  code = code <> "            double I[2], E[2]; vegasOne(s, params, maxeval, epsrel, epsabs, seed, I, E);\n";
+  code = code <> "            int idx = kp * (1 + n_ibp) + (s - N_CONV + 1);\n";
+  code = code <> "            results[idx] = {I[0], I[1], E[0], E[1]};\n";
+  code = code <> "        }\n";
+  code = code <> "    }\n";
+  code = code <> "#else\n";
+  code = code <> "    (void)maxeval;\n";
+  code = code <> "    std::cerr << \"ERROR: built without CUBA. Rebuild with -DTROPICAL_USE_CUBA \"\n";
+  code = code <> "                 \"(install CUBA), or use Integrator -> \\\"MonteCarlo\\\".\" << std::endl;\n";
+  code = code <> "    return 2;\n";
+  code = code <> "#endif\n\n";
+
+  code = code <> "    std::ofstream fout(output_file);\n";
+  code = code <> "    if (!fout) { std::cerr << \"Cannot open \" << output_file << std::endl; return 1; }\n";
+  code = code <> "    fout.precision(17);\n";
+  code = code <> "    for (int i = 0; i < (int)results.size(); i++) {\n";
+  code = code <> "        fout << results[i][0] << \" \" << results[i][1] << \" \"\n";
+  code = code <> "             << results[i][2] << \" \" << results[i][3] << \"\\n\";\n";
+  code = code <> "    }\n";
+  code = code <> "    fout.close();\n";
+  code = code <> "    std::cerr << \"Done. Processed \" << n_kp << \" kinematic points.\" << std::endl;\n";
+  code = code <> "    return 0;\n}\n";
+    code
+  ]
 ];
 
 (* --------------------------------------------------------------------------
@@ -2073,23 +2360,15 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
   seedBase   = OptionValue["SeedBase"];
 
   defs = emitIntegrandDefinitions[convergentSectors, divergentSectors,
-           integrandSpec, "MaxDim" -> maxDim];
+           {}, integrandSpec, "MaxDim" -> maxDim];
 
-  mainCode = Which[
-    integrator === "Vegas" && batch,
-      emitVegasBatchMain[defs, "NSamples" -> nSamples,
-        "VegasEpsRel" -> OptionValue["VegasEpsRel"],
-        "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
-        "VegasSeed"   -> OptionValue["VegasSeed"],
-        "CubaMaxComp" -> OptionValue["CubaMaxComp"]],
-    integrator === "Vegas",
-      emitVegasMain[defs, "NSamples" -> nSamples,
-        "VegasEpsRel" -> OptionValue["VegasEpsRel"],
-        "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
-        "VegasSeed"   -> OptionValue["VegasSeed"]],
-    True,
-      emitMonteCarloMain[defs, "NSamples" -> nSamples, "SeedBase" -> seedBase]
-  ];
+  integrator = normalizeIntegrator[integrator];
+  mainCode = emitMain[defs, integrator, batch,
+    "NSamples" -> nSamples, "SeedBase" -> seedBase,
+    "VegasEpsRel" -> OptionValue["VegasEpsRel"],
+    "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
+    "VegasSeed"   -> OptionValue["VegasSeed"],
+    "CubaMaxComp" -> OptionValue["CubaMaxComp"]];
 
   code = defs["Defs"] <> mainCode;
 
@@ -2108,8 +2387,8 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
 
   Print["Generated C++ Monte Carlo code: ", outputFile,
     Switch[{integrator, batch},
-      {"Vegas", True}, "  (Vegas, batched-ncomp)",
-      {"Vegas", _},    "  (Vegas, per-kp)",
+      {"VEGAS", True}, "  (VEGAS, batched-ncomp)",
+      {"VEGAS", _},    "  (VEGAS, per-kp)",
       _,               ""]];
   Print["  ", defs["NConvergent"], " convergent sectors"];
   Print["  ", defs["NG0"], " G0 integrands"];
@@ -2230,6 +2509,12 @@ Module[{compiler, flags, cmd, result, needsCuba, cuba, linkFlags},
    ============================================================================ *)
 
 Options[EvaluateTropicalMC] = {
+  (* divergence-handling method (plan.md §3.4, D2):
+       Automatic -> "None" if no divergent sectors, else "IBP" (the default
+                    divergence method); force with "None" | "IBP" | "Subtraction".
+     "IBP" routes to the IBP execution path (each term convergent at eps=0);
+     "None"/"Subtraction" use the tropical-subtraction path of this driver. *)
+  "Method"         -> Automatic,
   "NSamples"       -> 1000000,
   "NThreads"       -> Automatic,
   "RunChecks"      -> True,
@@ -2238,13 +2523,10 @@ Options[EvaluateTropicalMC] = {
   "PrecisionGoal"  -> 3,
   "WorkingDirectory" -> Automatic,
   "Verbose"        -> True,
-  (* sampler selection (default = today's plain Monte Carlo) *)
-  "Integrator"     -> "MonteCarlo",  (* "MonteCarlo" | "Vegas" *)
-  "Batch"          -> False,         (* chunked-ncomp Vegas (Vegas only) *)
-  "VegasEpsRel"    -> 1.*^-12,
-  "VegasEpsAbs"    -> 1.*^-300,
-  "VegasSeed"      -> 0,
-  "CubaMaxComp"    -> 512
+  (* sampler selection (default = the zero-dependency plain Monte Carlo) *)
+  "Integrator"     -> "MC",    (* "MC" | "VEGAS" (aliases "MonteCarlo"/"Vegas") *)
+  "Batch"          -> False,         (* chunked-ncomp VEGAS (VEGAS only) *)
+  Sequence @@ $vegasOptionDefaults
 };
 
 EvaluateTropicalMC[integrandSpec_Association, fanData_List,
@@ -2257,7 +2539,7 @@ Module[
    cppResult, mcResults, finalResults,
    runChecks, verbose, nSamples, nThreads,
    workDir, epsVal, testEps, precGoal, eps,
-   integrator, batch, useCuba, vegasOpts},
+   integrator, batch, useCuba, vegasOpts, method},
 
   runChecks  = OptionValue["RunChecks"];
   verbose    = OptionValue["Verbose"];
@@ -2267,15 +2549,46 @@ Module[
   epsVal     = OptionValue["EpsilonValue"];
   testEps    = OptionValue["TestEpsilon"];
   precGoal   = OptionValue["PrecisionGoal"];
-  integrator = OptionValue["Integrator"];
+  method     = OptionValue["Method"];
+  integrator = normalizeIntegrator[OptionValue["Integrator"]];
   batch      = TrueQ[OptionValue["Batch"]];
-  useCuba    = (integrator === "Vegas");
+  useCuba    = (integrator === "VEGAS");
   vegasOpts  = {"Integrator" -> integrator, "Batch" -> batch,
     "VegasEpsRel" -> OptionValue["VegasEpsRel"],
     "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
     "VegasSeed" -> OptionValue["VegasSeed"],
     "CubaMaxComp" -> OptionValue["CubaMaxComp"]};
   eps        = integrandSpec["RegulatorSymbol"];
+
+  (* --- Method routing (plan.md §3.4, §5.4, D2) ---
+     This driver owns the convergent + tropical-subtraction paths; the IBP path
+     lives in evaluateTropicalIBPDriver, to which we delegate when Method is
+     "IBP", or (Automatic) when the integral has divergent sectors AND a
+     regulator is present (IBP is the DEFAULT divergence method).  "None" and
+     "Subtraction" stay in this driver.  The convergent case (no divergent
+     sectors) is unaffected: Automatic resolves to "None" and falls through. *)
+  Module[{routeToIBP},
+    routeToIBP = Which[
+      method === "IBP", True,
+      method === "None" || method === "Subtraction", False,
+      method === Automatic,
+        eps =!= None && AnyTrue[
+          Table[ProcessSector[integrandSpec, fanData[[1]], fanData[[2, s]], s],
+                {s, Length[fanData[[2]]]}],
+          (AssociationQ[#] && TrueQ[#["IsDivergent"]]) &],
+      True, False
+    ];
+    If[routeToIBP,
+      Return[evaluateTropicalIBPDriver[integrandSpec, fanData, kinematicPoints,
+        "NSamples" -> nSamples, "NThreads" -> nThreads,
+        "RunChecks" -> runChecks, "WorkingDirectory" -> workDir,
+        "Verbose" -> verbose, "Integrator" -> integrator, "Batch" -> batch,
+        "VegasEpsRel" -> OptionValue["VegasEpsRel"],
+        "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
+        "VegasSeed" -> OptionValue["VegasSeed"],
+        "CubaMaxComp" -> OptionValue["CubaMaxComp"]]]
+    ]
+  ];
 
   If[workDir === Automatic,
     workDir = DirectoryName[$InputFileName];
@@ -2492,7 +2805,7 @@ Module[
   (* --- Step 7: Debug compile and test (MC only) ---
      The -DTROPICAL_MC_DEBUG instrumentation lives in the MC main; the Vegas
      mains do not carry it, so the debug build is gated to the MC integrator. *)
-  If[runChecks && integrator === "MonteCarlo",
+  If[runChecks && integrator === "MC",
     Module[{dbgBinary, dbgResult, dbgKinFile},
       dbgBinary  = FileNameJoin[{workDir, "tropical_mc_dbg"}];
       dbgKinFile = FileNameJoin[{workDir, "kinematic_data_dbg.txt"}];
@@ -2711,16 +3024,20 @@ Module[{epsVals, fwd, nKP, perEps, fitPerKP},
   epsVals = OptionValue["EpsilonValues"];
   nKP     = Length[kinematicPoints];
 
-  (* forward EvaluateTropicalMC options, but we own EpsilonValue + RunChecks *)
+  (* forward EvaluateTropicalMC options, but we own EpsilonValue + RunChecks +
+     Method: this helper substitutes a NUMERIC eps (every sector convergent) and
+     fits the Laurent, so it must stay in the convergent driver path
+     (Method -> "None"), never route to IBP. *)
   fwd = DeleteCases[
     FilterRules[{opts}, Options[EvaluateTropicalMC]],
-    ("EpsilonValue" -> _) | ("RunChecks" -> _)];
+    ("EpsilonValue" -> _) | ("RunChecks" -> _) | ("Method" -> _)];
 
   (* full complex integral F(eps_i) for every kp, one row per eps value *)
   perEps = Table[
     Module[{r},
       r = EvaluateTropicalMC[integrandSpec, fanData, kinematicPoints,
-            "EpsilonValue" -> ev, "RunChecks" -> False, Sequence @@ fwd];
+            "EpsilonValue" -> ev, "RunChecks" -> False, "Method" -> "None",
+            Sequence @@ fwd];
       If[AssociationQ[r],
         (#["Re"] + I*#["Im"]) & /@ r["Results"],
         $Failed]
@@ -3507,670 +3824,14 @@ Module[
      Line i: func_re func_im err_re err_im
    -------------------------------------------------------------------------- *)
 
-(* ============================================================================
-   IBP codegen, factored like the convergent path:
-     emitIntegrandDefinitionsIBP -> shared "Defs" prefix (adds integrand_type[]
-                                    and N_CONV) + counts/dims + IBPFuncMap
-     emitMonteCarloMainIBP        -> the conv-sum + per-IBP-func main, VERBATIM
-     emitVegasMainIBP             -> Vegas conv-sum (s<N_CONV) + per-IBP-func
-   GenerateCppMonteCarloIBP picks the main from {Integrator, Batch}.  For
-   "MonteCarlo", the concatenation must equal the pre-refactor output byte-for-
-   byte (guarded by golden_ibp_div1d.cpp).
-   ============================================================================ *)
-
-Options[emitIntegrandDefinitionsIBP] = {"MaxDim" -> 20};
-
-emitIntegrandDefinitionsIBP[convergentSectors_List, ibpSectors_List,
-                            integrandSpec_Association,
-                            OptionsPattern[]] :=
-Module[
-  {kinSyms, paramMap, nParams,
-   code, integrandFuncs, integrandDims, integrandTypes,
-   nConvergent, nIBPFuncs,
-   maxDim,
-   ibpFuncMap},
-
-  kinSyms  = integrandSpec["KinematicSymbols"];
-  nParams  = Length[kinSyms];
-  maxDim   = OptionValue["MaxDim"];
-
-  paramMap = Association @@ Table[
-    kinSyms[[i]] -> ("params[" <> ToString[i - 1] <> "]"),
-    {i, nParams}
-  ];
-
-  integrandFuncs = {};
-  integrandDims  = {};
-  integrandTypes = {};  (* "conv" or "ibp" *)
-  nConvergent = 0;
-  nIBPFuncs   = 0;
-  ibpFuncMap  = {};  (* tracks which functions belong to which IBP sector *)
-
-  (* --- Generate convergent sector integrands (same as old code) --- *)
-  Do[
-    Module[{sd, flatPolys, polyExps, prefactor, dim, funcName, funcCode},
-      sd        = convergentSectors[[s]];
-      flatPolys = sd["FlattenedPolys"];
-      polyExps  = sd["PolynomialExponents"];
-      prefactor = sd["Prefactor"];
-      dim       = sd["Dimension"];
-      funcName  = "integrand_conv_" <> ToString[s - 1];
-
-      funcCode = "inline cx " <> funcName <>
-        "(const double* y, const double* params) {\n";
-      funcCode = funcCode <>
-        "    // Convergent sector " <> ToString[sd["ConeIndex"]] <> "\n";
-      funcCode = funcCode <>
-        "    double log_y[" <> ToString[dim] <> "];\n";
-      funcCode = funcCode <>
-        "    for (int i = 0; i < " <> ToString[dim] <>
-        "; i++)\n";
-      funcCode = funcCode <>
-        "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
-
-      Do[
-        funcCode = funcCode <>
-          GenerateMonomialSumCpp[flatPolys[[j]], j - 1, paramMap, dim] <>
-          "\n\n";,
-        {j, Length[flatPolys]}
-      ];
-
-      funcCode = funcCode <> "    cx result = " <>
-        mmaToCInternal[prefactor, paramMap] <> ";\n";
-      Do[
-        funcCode = funcCode <>
-          "    result *= std::exp(" <>
-          mmaToCInternal[polyExps[[j]], paramMap] <>
-          " * std::log(P" <> ToString[j - 1] <> "));\n";,
-        {j, Length[polyExps]}
-      ];
-      funcCode = funcCode <> "    return result;\n}\n";
-
-      AppendTo[integrandFuncs, funcCode];
-      AppendTo[integrandDims, dim];
-      AppendTo[integrandTypes, "conv"];
-      nConvergent++;
-    ],
-    {s, Length[convergentSectors]}
-  ];
-
-  (* --- Generate IBP sector integrands --- *)
-  Do[
-    Module[{ibpSD, bndData, ibpTerms, sIdx, sectorFuncs},
-      ibpSD    = ibpSectors[[s]];
-      bndData  = ibpSD["BoundaryData"];
-      ibpTerms = ibpSD["IBPTerms"];
-      sIdx     = s - 1;
-      sectorFuncs = <|"SectorIndex" -> sIdx,
-                      "ConeIndex" -> ibpSD["ConeIndex"]|>;
-
-      (* --- Boundary base function (order 0) --- *)
-      Module[{flatPolys, polyExps, prefactor, dim, funcName, funcCode},
-        flatPolys = bndData["FlatPolys"];
-        polyExps  = bndData["PolyExponents"];
-        prefactor = bndData["Prefactor"];
-        dim       = bndData["Dimension"];
-        funcName  = "integrand_ibp_bnd_" <> ToString[sIdx] <> "_base";
-
-        funcCode = "inline cx " <> funcName <>
-          "(const double* y, const double* params) {\n";
-        funcCode = funcCode <>
-          "    // IBP boundary base, sector " <>
-          ToString[ibpSD["ConeIndex"]] <> "\n";
-        funcCode = funcCode <>
-          "    double log_y[" <> ToString[dim] <> "];\n";
-        funcCode = funcCode <>
-          "    for (int i = 0; i < " <> ToString[dim] <>
-          "; i++)\n";
-        funcCode = funcCode <>
-          "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
-
-        Do[
-          funcCode = funcCode <>
-            GenerateMonomialSumCpp[flatPolys[[j]], j - 1, paramMap, dim] <>
-            "\n\n";,
-          {j, Length[flatPolys]}
-        ];
-
-        funcCode = funcCode <> "    cx result = " <>
-          mmaToCInternal[prefactor, paramMap] <> ";\n";
-        Do[
-          funcCode = funcCode <>
-            "    result *= std::exp(" <>
-            mmaToCInternal[polyExps[[j]], paramMap] <>
-            " * std::log(P" <> ToString[j - 1] <> "));\n";,
-          {j, Length[polyExps]}
-        ];
-        funcCode = funcCode <> "    return result;\n}\n";
-
-        AppendTo[integrandFuncs, funcCode];
-        AppendTo[integrandDims, dim];
-        AppendTo[integrandTypes, "ibp"];
-        sectorFuncs["BndBaseFuncId"] = Length[integrandFuncs] - 1;
-        nIBPFuncs++;
-      ];
-
-      (* --- Boundary log function (order 1) --- *)
-      Module[{flatPolys, polyExps, prefactor, dim, funcName, funcCode,
-              logIns, varTerms, polyTerms},
-        flatPolys = bndData["FlatPolys"];
-        polyExps  = bndData["PolyExponents"];
-        prefactor = bndData["Prefactor"];
-        dim       = bndData["Dimension"];
-        logIns    = bndData["LogInsertions"];
-        varTerms  = logIns["VariableTerms"];
-        polyTerms = logIns["PolynomialTerms"];
-        funcName  = "integrand_ibp_bnd_" <> ToString[sIdx] <> "_log";
-
-        funcCode = "inline cx " <> funcName <>
-          "(const double* y, const double* params) {\n";
-        funcCode = funcCode <>
-          "    // IBP boundary log, sector " <>
-          ToString[ibpSD["ConeIndex"]] <> "\n";
-        funcCode = funcCode <>
-          "    double log_y[" <> ToString[dim] <> "];\n";
-        funcCode = funcCode <>
-          "    for (int i = 0; i < " <> ToString[dim] <>
-          "; i++)\n";
-        funcCode = funcCode <>
-          "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
-
-        Do[
-          funcCode = funcCode <>
-            GenerateMonomialSumCpp[flatPolys[[j]], j - 1, paramMap, dim] <>
-            "\n\n";,
-          {j, Length[flatPolys]}
-        ];
-
-        funcCode = funcCode <> "    cx base_val = " <>
-          mmaToCInternal[prefactor, paramMap] <> ";\n";
-        Do[
-          funcCode = funcCode <>
-            "    base_val *= std::exp(" <>
-            mmaToCInternal[polyExps[[j]], paramMap] <>
-            " * std::log(P" <> ToString[j - 1] <> "));\n";,
-          {j, Length[polyExps]}
-        ];
-
-        funcCode = funcCode <> "\n    // Log insertion factors\n";
-        funcCode = funcCode <> "    cx log_sum(0.0, 0.0);\n";
-
-        Do[
-          Module[{coeff, varIdx},
-            coeff  = vt[[1]];
-            varIdx = vt[[2]] - 1;
-            funcCode = funcCode <>
-              "    log_sum += " <>
-              mmaToCInternal[coeff, paramMap] <>
-              " * log_y[" <> ToString[varIdx] <> "];\n";
-          ],
-          {vt, varTerms}
-        ];
-
-        Do[
-          Module[{coeff, polyIdx},
-            coeff   = pt[[1]];
-            polyIdx = pt[[2]] - 1;
-            funcCode = funcCode <>
-              "    log_sum += " <>
-              mmaToCInternal[coeff, paramMap] <>
-              " * std::log(P" <> ToString[polyIdx] <> ");\n";
-          ],
-          {pt, polyTerms}
-        ];
-
-        funcCode = funcCode <>
-          "\n    return base_val * log_sum;\n}\n";
-
-        AppendTo[integrandFuncs, funcCode];
-        AppendTo[integrandDims, dim];
-        AppendTo[integrandTypes, "ibp"];
-        sectorFuncs["BndLogFuncId"] = Length[integrandFuncs] - 1;
-        nIBPFuncs++;
-      ];
-
-      (* --- IBP term functions (base + log for each term) --- *)
-      sectorFuncs["TermFuncIds"] = {};
-
-      Do[
-        Module[{termData, flatPolys, polyExps, prefactor, dim,
-                logIns, varTerms, polyTerms,
-                funcNameBase, funcNameLog, funcCodeBase, funcCodeLog,
-                tIdx},
-          termData  = ibpTerms[[t]];
-          flatPolys = termData["FlatPolys"];
-          polyExps  = termData["PolyExponents"];
-          prefactor = termData["Prefactor"];
-          dim       = termData["Dimension"];
-          logIns    = termData["LogInsertions"];
-          varTerms  = logIns["VariableTerms"];
-          polyTerms = logIns["PolynomialTerms"];
-          tIdx      = t - 1;
-
-          (* Base function *)
-          funcNameBase = "integrand_ibp_" <> ToString[sIdx] <>
-            "_t" <> ToString[tIdx] <> "_base";
-
-          funcCodeBase = "inline cx " <> funcNameBase <>
-            "(const double* y, const double* params) {\n";
-          funcCodeBase = funcCodeBase <>
-            "    // IBP term " <> ToString[tIdx] <> " base, sector " <>
-            ToString[ibpSD["ConeIndex"]] <> "\n";
-          funcCodeBase = funcCodeBase <>
-            "    double log_y[" <> ToString[dim] <> "];\n";
-          funcCodeBase = funcCodeBase <>
-            "    for (int i = 0; i < " <> ToString[dim] <>
-            "; i++)\n";
-          funcCodeBase = funcCodeBase <>
-            "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
-
-          Do[
-            funcCodeBase = funcCodeBase <>
-              GenerateMonomialSumCpp[flatPolys[[j]], j - 1, paramMap, dim] <>
-              "\n\n";,
-            {j, Length[flatPolys]}
-          ];
-
-          funcCodeBase = funcCodeBase <> "    cx result = " <>
-            mmaToCInternal[prefactor, paramMap] <> ";\n";
-          Do[
-            funcCodeBase = funcCodeBase <>
-              "    result *= std::exp(" <>
-              mmaToCInternal[polyExps[[j]], paramMap] <>
-              " * std::log(P" <> ToString[j - 1] <> "));\n";,
-            {j, Length[polyExps]}
-          ];
-          funcCodeBase = funcCodeBase <> "    return result;\n}\n";
-
-          AppendTo[integrandFuncs, funcCodeBase];
-          AppendTo[integrandDims, dim];
-          AppendTo[integrandTypes, "ibp"];
-
-          (* Log function *)
-          funcNameLog = "integrand_ibp_" <> ToString[sIdx] <>
-            "_t" <> ToString[tIdx] <> "_log";
-
-          funcCodeLog = "inline cx " <> funcNameLog <>
-            "(const double* y, const double* params) {\n";
-          funcCodeLog = funcCodeLog <>
-            "    // IBP term " <> ToString[tIdx] <> " log, sector " <>
-            ToString[ibpSD["ConeIndex"]] <> "\n";
-          funcCodeLog = funcCodeLog <>
-            "    double log_y[" <> ToString[dim] <> "];\n";
-          funcCodeLog = funcCodeLog <>
-            "    for (int i = 0; i < " <> ToString[dim] <>
-            "; i++)\n";
-          funcCodeLog = funcCodeLog <>
-            "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
-
-          Do[
-            funcCodeLog = funcCodeLog <>
-              GenerateMonomialSumCpp[flatPolys[[j]], j - 1, paramMap, dim] <>
-              "\n\n";,
-            {j, Length[flatPolys]}
-          ];
-
-          funcCodeLog = funcCodeLog <> "    cx base_val = " <>
-            mmaToCInternal[prefactor, paramMap] <> ";\n";
-          Do[
-            funcCodeLog = funcCodeLog <>
-              "    base_val *= std::exp(" <>
-              mmaToCInternal[polyExps[[j]], paramMap] <>
-              " * std::log(P" <> ToString[j - 1] <> "));\n";,
-            {j, Length[polyExps]}
-          ];
-
-          funcCodeLog = funcCodeLog <> "\n    cx log_sum(0.0, 0.0);\n";
-
-          Do[
-            Module[{coeff, varIdx},
-              coeff  = vt[[1]];
-              varIdx = vt[[2]] - 1;
-              funcCodeLog = funcCodeLog <>
-                "    log_sum += " <>
-                mmaToCInternal[coeff, paramMap] <>
-                " * log_y[" <> ToString[varIdx] <> "];\n";
-            ],
-            {vt, varTerms}
-          ];
-
-          Do[
-            Module[{coeff, polyIdx},
-              coeff   = pt[[1]];
-              polyIdx = pt[[2]] - 1;
-              funcCodeLog = funcCodeLog <>
-                "    log_sum += " <>
-                mmaToCInternal[coeff, paramMap] <>
-                " * std::log(P" <> ToString[polyIdx] <> ");\n";
-            ],
-            {pt, polyTerms}
-          ];
-
-          funcCodeLog = funcCodeLog <>
-            "\n    return base_val * log_sum;\n}\n";
-
-          AppendTo[integrandFuncs, funcCodeLog];
-          AppendTo[integrandDims, dim];
-          AppendTo[integrandTypes, "ibp"];
-
-          AppendTo[sectorFuncs["TermFuncIds"],
-            <|"BaseFuncId" -> Length[integrandFuncs] - 2,
-              "LogFuncId"  -> Length[integrandFuncs] - 1,
-              "Coeff0"     -> termData["Coeff0"],
-              "Coeff1"     -> termData["Coeff1"]|>
-          ];
-          nIBPFuncs += 2;
-        ],
-        {t, Length[ibpTerms]}
-      ];
-
-      AppendTo[ibpFuncMap, sectorFuncs];
-    ],
-    {s, Length[ibpSectors]}
-  ];
-
-  Module[{nIntegrands, allFuncNames},
-    nIntegrands = Length[integrandFuncs];
-
-    (* --- Assemble the full C++ file --- *)
-    code = "// Auto-generated by TropicalEval`GenerateCppMonteCarloIBP\n";
-    code = code <> "// " <> ToString[nConvergent] <> " convergent, " <>
-      ToString[nIBPFuncs] <> " IBP integrands\n\n";
-
-    code = code <> "#include <complex>\n";
-    code = code <> "#include <cmath>\n";
-    code = code <> "#include <random>\n";
-    code = code <> "#include <fstream>\n";
-    code = code <> "#include <vector>\n";
-    code = code <> "#include <iostream>\n";
-    code = code <> "#include <string>\n";
-    code = code <> "#include <cassert>\n";
-    code = code <> "#include <cstdlib>\n";
-    code = code <> "#include <array>\n";
-    code = code <> "#ifdef _OPENMP\n";
-    code = code <> "#include <omp.h>\n";
-    code = code <> "#endif\n\n";
-
-    code = code <> "using cx = std::complex<double>;\n\n";
-
-    Do[code = code <> integrandFuncs[[i]] <> "\n";,
-       {i, nIntegrands}];
-
-    code = code <>
-      "using IntegrandFunc = cx(*)(const double*, const double*);\n\n";
-
-    (* Build function table and names *)
-    allFuncNames = {};
-    Do[
-      Module[{funcCode, funcName},
-        funcCode = integrandFuncs[[i]];
-        funcName = StringCases[funcCode,
-          RegularExpression["inline cx (\\w+)\\("] -> "$1"][[1]];
-        AppendTo[allFuncNames, funcName];
-      ],
-      {i, nIntegrands}
-    ];
-
-    code = code <> "IntegrandFunc integrand_table[] = {\n    " <>
-      StringRiffle[allFuncNames, ",\n    "] <> "\n};\n\n";
-
-    code = code <> "int integrand_dim[] = {" <>
-      StringRiffle[ToString /@ integrandDims, ", "] <> "};\n";
-
-    (* Type array: 0 = convergent (sum), 1 = IBP (individual) *)
-    code = code <> "int integrand_type[] = {" <>
-      StringRiffle[If[# === "conv", "0", "1"] & /@ integrandTypes, ", "] <>
-      "};\n";
-
-    code = code <> "const int N_INTEGRANDS = " <>
-      ToString[nIntegrands] <> ";\n";
-    code = code <> "const int N_CONV = " <>
-      ToString[nConvergent] <> ";\n";
-    code = code <> "const int N_PARAMS = " <>
-      ToString[nParams] <> ";\n";
-    code = code <> "const int MAX_DIM = " <>
-      ToString[maxDim] <> ";\n\n";
-
-    <|"Defs" -> code, "Dims" -> integrandDims,
-      "NConvergent" -> nConvergent, "NIBPFuncs" -> nIBPFuncs,
-      "NTotal" -> nIntegrands, "NParams" -> nParams,
-      "IBPFuncMap" -> ibpFuncMap|>
-  ]
-];
-
-(* --------------------------------------------------------------------------
-   emitMonteCarloMainIBP — the IBP MC main(), VERBATIM (B0).  Convergent
-   sectors (s<N_CONV) are summed into line 0; each IBP function (s>=N_CONV) is
-   reported on its own line, per kinematic point.
-   -------------------------------------------------------------------------- *)
-Options[emitMonteCarloMainIBP] = {"NSamples" -> 1000000, "SeedBase" -> 42};
-emitMonteCarloMainIBP[info_Association, OptionsPattern[]] :=
-Module[{code, nSamples, seedBase},
-  nSamples = OptionValue["NSamples"];
-  seedBase = OptionValue["SeedBase"];
-
-  (* Main function: evaluate convergent sum + individual IBP functions *)
-  code = "int main(int argc, char* argv[]) {\n";
-  code = code <> "    if (argc < 3) {\n";
-    code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [n_samples] [n_threads]\" << std::endl;\n";
-    code = code <> "        return 1;\n";
-    code = code <> "    }\n\n";
-
-    code = code <> "    std::string input_file = argv[1];\n";
-    code = code <> "    std::string output_file = argv[2];\n";
-    code = code <> "    int n_samples = (argc > 3) ? std::atoi(argv[3]) : " <>
-      ToString[nSamples] <> ";\n";
-    code = code <> "    int n_threads = (argc > 4) ? std::atoi(argv[4]) : 1;\n";
-    code = code <> "#ifdef _OPENMP\n";
-    code = code <> "    if (n_threads == 1) n_threads = omp_get_max_threads();\n";
-    code = code <> "    omp_set_num_threads(n_threads);\n";
-    code = code <> "#endif\n\n";
-
-    code = code <> "    std::ifstream fin(input_file);\n";
-    code = code <> "    if (!fin) { std::cerr << \"Cannot open \" << input_file << std::endl; return 1; }\n\n";
-
-    code = code <> "    std::vector<std::vector<double>> kinematic_data;\n";
-    code = code <> "    if (N_PARAMS == 0) {\n";
-    code = code <> "        int count = 1; fin >> count; if (count < 1) count = 1;\n";
-    code = code <> "        for (int i = 0; i < count; i++) kinematic_data.push_back({});\n";
-    code = code <> "    } else {\n";
-    code = code <> "        double val; std::vector<double> row;\n";
-    code = code <> "        while (fin >> val) { row.push_back(val);\n";
-    code = code <> "            if ((int)row.size() == N_PARAMS) { kinematic_data.push_back(row); row.clear(); }}\n";
-    code = code <> "    }\n";
-    code = code <> "    fin.close();\n";
-    code = code <> "    int n_kp = (int)kinematic_data.size();\n";
-    code = code <> "    std::cerr << \"Read \" << n_kp << \" kinematic points\" << std::endl;\n\n";
-
-    (* Output: one convergent sum + each IBP function individually,
-       per kinematic point *)
-    code = code <> "    // Output: (1 + N_IBP_FUNCS) lines per kinematic point\n";
-    code = code <> "    // Line 0: convergent sum; Lines 1..N_IBP: individual IBP functions\n";
-    code = code <> "    int n_ibp = N_INTEGRANDS - N_CONV;\n";
-    code = code <> "    std::vector<std::array<double, 4>> results((1 + n_ibp) * n_kp);\n\n";
-
-    code = code <> "    #pragma omp parallel for schedule(dynamic)\n";
-    code = code <> "    for (int kp = 0; kp < n_kp; kp++) {\n";
-    code = code <> "        const double* params = kinematic_data[kp].data();\n";
-    code = code <> "        uint64_t seed = " <> ToString[seedBase] <> "ULL + (uint64_t)kp;\n";
-    code = code <> "        std::mt19937_64 rng(seed);\n";
-    code = code <> "        std::uniform_real_distribution<double> dist(0.0, 1.0);\n\n";
-
-    (* Convergent sum *)
-    code = code <> "        double conv_re = 0.0, conv_im = 0.0;\n";
-    code = code <> "        double conv_var_re = 0.0, conv_var_im = 0.0;\n\n";
-
-    code = code <> "        for (int s = 0; s < N_CONV; s++) {\n";
-    code = code <> "            int dim = integrand_dim[s];\n";
-    code = code <> "            double mean_re = 0.0, mean_im = 0.0;\n";
-    code = code <> "            double M2_re = 0.0, M2_im = 0.0;\n";
-    code = code <> "            for (int k = 0; k < n_samples; k++) {\n";
-    code = code <> "                double y[MAX_DIM];\n";
-    code = code <> "                for (int i = 0; i < dim; i++) y[i] = dist(rng);\n";
-    code = code <> "                cx val = integrand_table[s](y, params);\n";
-    code = code <> "                double d_re = val.real() - mean_re;\n";
-    code = code <> "                mean_re += d_re / (k + 1);\n";
-    code = code <> "                M2_re += d_re * (val.real() - mean_re);\n";
-    code = code <> "                double d_im = val.imag() - mean_im;\n";
-    code = code <> "                mean_im += d_im / (k + 1);\n";
-    code = code <> "                M2_im += d_im * (val.imag() - mean_im);\n";
-    code = code <> "            }\n";
-    code = code <> "            conv_re += mean_re; conv_im += mean_im;\n";
-    code = code <> "            conv_var_re += M2_re / ((double)n_samples * (n_samples - 1));\n";
-    code = code <> "            conv_var_im += M2_im / ((double)n_samples * (n_samples - 1));\n";
-    code = code <> "        }\n";
-    code = code <> "        results[kp * (1 + n_ibp)] = {conv_re, conv_im, std::sqrt(conv_var_re), std::sqrt(conv_var_im)};\n\n";
-
-    (* Individual IBP functions *)
-    code = code <> "        for (int s = N_CONV; s < N_INTEGRANDS; s++) {\n";
-    code = code <> "            int dim = integrand_dim[s];\n";
-    code = code <> "            double mean_re = 0.0, mean_im = 0.0;\n";
-    code = code <> "            double M2_re = 0.0, M2_im = 0.0;\n";
-    code = code <> "            for (int k = 0; k < n_samples; k++) {\n";
-    code = code <> "                double y[MAX_DIM];\n";
-    code = code <> "                for (int i = 0; i < dim; i++) y[i] = dist(rng);\n";
-    code = code <> "                cx val = integrand_table[s](y, params);\n";
-    code = code <> "                double d_re = val.real() - mean_re;\n";
-    code = code <> "                mean_re += d_re / (k + 1);\n";
-    code = code <> "                M2_re += d_re * (val.real() - mean_re);\n";
-    code = code <> "                double d_im = val.imag() - mean_im;\n";
-    code = code <> "                mean_im += d_im / (k + 1);\n";
-    code = code <> "                M2_im += d_im * (val.imag() - mean_im);\n";
-    code = code <> "            }\n";
-    code = code <> "            int idx = kp * (1 + n_ibp) + (s - N_CONV + 1);\n";
-    code = code <> "            results[idx] = {mean_re, mean_im, std::sqrt(M2_re / ((double)n_samples * (n_samples - 1))), std::sqrt(M2_im / ((double)n_samples * (n_samples - 1)))};\n";
-    code = code <> "        }\n";
-    code = code <> "    }\n\n";
-
-    code = code <> "    std::ofstream fout(output_file);\n";
-    code = code <> "    if (!fout) { std::cerr << \"Cannot open \" << output_file << std::endl; return 1; }\n";
-    code = code <> "    fout.precision(17);\n";
-    code = code <> "    for (int i = 0; i < (int)results.size(); i++) {\n";
-    code = code <> "        fout << results[i][0] << \" \" << results[i][1] << \" \"\n";
-    code = code <> "             << results[i][2] << \" \" << results[i][3] << \"\\n\";\n";
-    code = code <> "    }\n";
-    code = code <> "    fout.close();\n";
-    code = code <> "    std::cerr << \"Done. Processed \" << n_kp << \" kinematic points.\" << std::endl;\n";
-    code = code <> "    return 0;\n}\n";
-  code
-];
-
-(* --------------------------------------------------------------------------
-   emitVegasMainIBP — per-kp CUBA Vegas main for the IBP path.  Same output
-   layout as the IBP MC main (line 0 = convergent sum, lines 1..N_IBP = the
-   individual IBP functions) so EvaluateTropicalMCIBP's Laurent assembly is
-   unchanged.  Vegas replaces each inner sampling loop; CUBA params verbatim
-   from TEST/bench.cpp; ncomp=2 (complex); serial over kp.
-   -------------------------------------------------------------------------- *)
-Options[emitVegasMainIBP] = {"NSamples" -> 1000000, "VegasEpsRel" -> 1.*^-12,
-   "VegasEpsAbs" -> 1.*^-300, "VegasSeed" -> 0};
-emitVegasMainIBP[info_Association, OptionsPattern[]] :=
-Module[{code, nSamples, epsrel, epsabs, seed},
-  nSamples = OptionValue["NSamples"];
-  epsrel   = ToString[CForm[N[OptionValue["VegasEpsRel"]]]];
-  epsabs   = ToString[CForm[N[OptionValue["VegasEpsAbs"]]]];
-  seed     = ToString[OptionValue["VegasSeed"]];
-
-  code = "// TROPICAL_REQUIRES_CUBA  (CompileCpp greps for this sentinel)\n";
-  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
-  code = code <> "extern \"C\" {\n";
-  code = code <> "#include <cuba.h>\n";
-  code = code <> "}\n";
-  code = code <> "static IntegrandFunc g_fn     = nullptr;\n";
-  code = code <> "static const double* g_params = nullptr;\n";
-  code = code <> "static int           g_dim    = 0;\n";
-  code = code <> "static int cubaWrap(const int* ndim, const cubareal xx[], const int* ncomp,\n";
-  code = code <> "                    cubareal ff[], void* userdata) {\n";
-  code = code <> "    (void)ndim; (void)ncomp; (void)userdata;\n";
-  code = code <> "    double y[MAX_DIM];\n";
-  code = code <> "    for (int i = 0; i < g_dim; ++i) y[i] = (double)xx[i];\n";
-  code = code <> "    cx v = g_fn(y, g_params);\n";
-  code = code <> "    ff[0] = v.real(); ff[1] = v.imag();\n";
-  code = code <> "    return 0;\n";
-  code = code <> "}\n";
-  code = code <> "// integrate one function with Vegas; a 0-dim integrand (e.g. the IBP\n";
-  code = code <> "// boundary of a 1-var sector) is a constant, so eval it directly.\n";
-  code = code <> "static void vegasOne(int s, const double* params, long long maxeval,\n";
-  code = code <> "                     double epsrel, double epsabs, int seed,\n";
-  code = code <> "                     double out[2], double err[2]) {\n";
-  code = code <> "    g_fn = integrand_table[s]; g_dim = integrand_dim[s]; g_params = params;\n";
-  code = code <> "    if (g_dim == 0) {\n";
-  code = code <> "        double y0[1] = {0.0}; cx v = g_fn(y0, params);\n";
-  code = code <> "        out[0] = v.real(); out[1] = v.imag(); err[0] = 0.0; err[1] = 0.0;\n";
-  code = code <> "        return;\n";
-  code = code <> "    }\n";
-  code = code <> "    int neval = 0, fail = 0; cubareal I[2], E[2], Pr[2];\n";
-  code = code <> "    Vegas(g_dim, 2, cubaWrap, nullptr, 1, epsrel, epsabs, 0, seed,\n";
-  code = code <> "          0, (int)maxeval, 1000, 500, 1000, 0, nullptr, nullptr,\n";
-  code = code <> "          &neval, &fail, I, E, Pr);\n";
-  code = code <> "    out[0] = I[0]; out[1] = I[1]; err[0] = E[0]; err[1] = E[1];\n";
-  code = code <> "}\n";
-  code = code <> "#endif\n\n";
-
-  code = code <> "int main(int argc, char* argv[]) {\n";
-  code = code <> "    if (argc < 3) {\n";
-  code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [maxeval] [n_threads]\" << std::endl;\n";
-  code = code <> "        return 1;\n";
-  code = code <> "    }\n\n";
-  code = code <> "    std::string input_file = argv[1];\n";
-  code = code <> "    std::string output_file = argv[2];\n";
-  code = code <> "    long long maxeval = (argc > 3) ? std::atoll(argv[3]) : " <> ToString[nSamples] <> "LL;\n\n";
-  code = code <> "    std::ifstream fin(input_file);\n";
-  code = code <> "    if (!fin) { std::cerr << \"Cannot open \" << input_file << std::endl; return 1; }\n";
-  code = code <> "    std::vector<std::vector<double>> kinematic_data;\n";
-  code = code <> "    if (N_PARAMS == 0) {\n";
-  code = code <> "        int count = 1; fin >> count; if (count < 1) count = 1;\n";
-  code = code <> "        for (int i = 0; i < count; i++) kinematic_data.push_back({});\n";
-  code = code <> "    } else {\n";
-  code = code <> "        double val; std::vector<double> row;\n";
-  code = code <> "        while (fin >> val) { row.push_back(val);\n";
-  code = code <> "            if ((int)row.size() == N_PARAMS) { kinematic_data.push_back(row); row.clear(); }}\n";
-  code = code <> "    }\n";
-  code = code <> "    fin.close();\n";
-  code = code <> "    int n_kp = (int)kinematic_data.size();\n";
-  code = code <> "    std::cerr << \"Read \" << n_kp << \" kinematic points (Vegas IBP)\" << std::endl;\n\n";
-  code = code <> "    int n_ibp = N_INTEGRANDS - N_CONV;\n";
-  code = code <> "    std::vector<std::array<double, 4>> results((1 + n_ibp) * n_kp);\n\n";
-
-  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
-  code = code <> "    { const int zero = 0; cubacores(&zero, &zero); }\n";
-  code = code <> "    const double epsrel = " <> epsrel <> ", epsabs = " <> epsabs <> ";\n";
-  code = code <> "    const int    seed   = " <> seed <> ";\n";
-  code = code <> "    for (int kp = 0; kp < n_kp; ++kp) {\n";
-  code = code <> "        const double* params = kinematic_data[kp].data();\n";
-  code = code <> "        // convergent sectors (s < N_CONV) summed into line 0\n";
-  code = code <> "        double cre = 0, cim = 0, cvre = 0, cvim = 0;\n";
-  code = code <> "        for (int s = 0; s < N_CONV; ++s) {\n";
-  code = code <> "            double I[2], E[2]; vegasOne(s, params, maxeval, epsrel, epsabs, seed, I, E);\n";
-  code = code <> "            cre += I[0]; cim += I[1]; cvre += E[0]*E[0]; cvim += E[1]*E[1];\n";
-  code = code <> "        }\n";
-  code = code <> "        results[kp * (1 + n_ibp)] = {cre, cim, std::sqrt(cvre), std::sqrt(cvim)};\n";
-  code = code <> "        // each IBP function (s >= N_CONV) on its own line\n";
-  code = code <> "        for (int s = N_CONV; s < N_INTEGRANDS; ++s) {\n";
-  code = code <> "            double I[2], E[2]; vegasOne(s, params, maxeval, epsrel, epsabs, seed, I, E);\n";
-  code = code <> "            int idx = kp * (1 + n_ibp) + (s - N_CONV + 1);\n";
-  code = code <> "            results[idx] = {I[0], I[1], E[0], E[1]};\n";
-  code = code <> "        }\n";
-  code = code <> "    }\n";
-  code = code <> "#else\n";
-  code = code <> "    (void)maxeval;\n";
-  code = code <> "    std::cerr << \"ERROR: built without CUBA. Rebuild with -DTROPICAL_USE_CUBA \"\n";
-  code = code <> "                 \"(install CUBA), or use Integrator -> \\\"MonteCarlo\\\".\" << std::endl;\n";
-  code = code <> "    return 2;\n";
-  code = code <> "#endif\n\n";
-
-  code = code <> "    std::ofstream fout(output_file);\n";
-  code = code <> "    if (!fout) { std::cerr << \"Cannot open \" << output_file << std::endl; return 1; }\n";
-  code = code <> "    fout.precision(17);\n";
-  code = code <> "    for (int i = 0; i < (int)results.size(); i++) {\n";
-  code = code <> "        fout << results[i][0] << \" \" << results[i][1] << \" \"\n";
-  code = code <> "             << results[i][2] << \" \" << results[i][3] << \"\\n\";\n";
-  code = code <> "    }\n";
-  code = code <> "    fout.close();\n";
-  code = code <> "    std::cerr << \"Done. Processed \" << n_kp << \" kinematic points.\" << std::endl;\n";
-  code = code <> "    return 0;\n}\n";
-  code
-];
+(* The old IBP Defs emitter was folded into the single parametrized
+   emitIntegrandDefinitions (plan.md §5.2): call it with the IBP sectors
+   as the 3rd argument and {} for divergentSectors.  Byte-identical output
+   is guarded by the codegen goldens (cross-check #25). *)
+
+(* The IBP main()s (MC + per-kp Vegas) were folded into the single emitMain
+   (plan.md §5.2), routed by info["IsIBP"].  Byte-identical output is
+   guarded by the codegen goldens (cross-check #25). *)
 
 (* --------------------------------------------------------------------------
    GenerateCppMonteCarloIBP — public entry; builds Defs and selects the main.
@@ -4199,19 +3860,22 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
   nSamples   = OptionValue["NSamples"];
   seedBase   = OptionValue["SeedBase"];
 
-  defs = emitIntegrandDefinitionsIBP[convergentSectors, ibpSectors,
+  defs = emitIntegrandDefinitions[convergentSectors, {}, ibpSectors,
            integrandSpec, "MaxDim" -> maxDim];
 
-  If[integrator === "Vegas" && batch,
-    Print["NOTE: batched-ncomp Vegas is not implemented for the IBP path ",
-          "(VEGAS plan T8, deferred); using per-kp Vegas."]];
+  integrator = normalizeIntegrator[integrator];
+  If[integrator === "VEGAS" && batch,
+    Print["NOTE: batched-ncomp VEGAS is not implemented for the IBP path ",
+          "(VEGAS plan T8, deferred); using per-kp VEGAS."]];
 
-  mainCode = If[integrator === "Vegas",
-    emitVegasMainIBP[defs, "NSamples" -> nSamples,
-      "VegasEpsRel" -> OptionValue["VegasEpsRel"],
-      "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
-      "VegasSeed"   -> OptionValue["VegasSeed"]],
-    emitMonteCarloMainIBP[defs, "NSamples" -> nSamples, "SeedBase" -> seedBase]];
+  (* emitMain routes IBP result-assembly off defs["IsIBP"]; batch is ignored on
+     the IBP path (per-kp Vegas fallback, plan.md §5.1). *)
+  mainCode = emitMain[defs, integrator, batch,
+    "NSamples" -> nSamples, "SeedBase" -> seedBase,
+    "VegasEpsRel" -> OptionValue["VegasEpsRel"],
+    "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
+    "VegasSeed"   -> OptionValue["VegasSeed"],
+    "CubaMaxComp" -> OptionValue["CubaMaxComp"]];
 
   code = defs["Defs"] <> mainCode;
 
@@ -4228,7 +3892,7 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
   Export[outputFile, code, "Text"];
 
   Print["Generated IBP C++ Monte Carlo code: ", outputFile,
-    If[integrator === "Vegas", "  (Vegas, per-kp)", ""]];
+    If[integrator === "VEGAS", "  (VEGAS, per-kp)", ""]];
   Print["  ", defs["NConvergent"], " convergent sectors"];
   Print["  ", defs["NIBPFuncs"], " IBP integrands (",
         Length[ibpSectors], " sectors)"];
@@ -4253,22 +3917,24 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
    nested divergences).
    ============================================================================ *)
 
-Options[EvaluateTropicalMCIBP] = {
+(* evaluateTropicalIBPDriver — the IBP execution path, formerly the public
+   EvaluateTropicalMCIBP body.  In v3 it is a PRIVATE helper that the unified
+   EvaluateTropicalMC delegates to when Method resolves to "IBP"; the public
+   EvaluateTropicalMCIBP is now a thin wrapper (plan.md §5.4).  Body unchanged
+   so the IBP tests reproduce the Phase-0 numbers exactly. *)
+Options[evaluateTropicalIBPDriver] = {
   "NSamples"         -> 1000000,
   "NThreads"         -> Automatic,
   "RunChecks"        -> True,
   "WorkingDirectory" -> Automatic,
   "Verbose"          -> True,
-  (* sampler selection (default = today's plain Monte Carlo) *)
-  "Integrator"       -> "MonteCarlo",  (* "MonteCarlo" | "Vegas" *)
-  "Batch"            -> False,         (* IBP batch deferred -> per-kp Vegas *)
-  "VegasEpsRel"      -> 1.*^-12,
-  "VegasEpsAbs"      -> 1.*^-300,
-  "VegasSeed"        -> 0,
-  "CubaMaxComp"      -> 512
+  (* sampler selection (default = the zero-dependency plain Monte Carlo) *)
+  "Integrator"       -> "MC",    (* "MC" | "VEGAS" (aliases "MonteCarlo"/"Vegas") *)
+  "Batch"            -> False,         (* IBP batch deferred -> per-kp VEGAS *)
+  Sequence @@ $vegasOptionDefaults
 };
 
-EvaluateTropicalMCIBP[integrandSpec_Association, fanData_List,
+evaluateTropicalIBPDriver[integrandSpec_Association, fanData_List,
                       kinematicPoints_List, OptionsPattern[]] :=
 Module[
   {dualVertices, simplexList, n, nKP, nParams, eps,
@@ -4286,9 +3952,9 @@ Module[
   nThreads   = OptionValue["NThreads"];
   workDir    = OptionValue["WorkingDirectory"];
   eps        = integrandSpec["RegulatorSymbol"];
-  integrator = OptionValue["Integrator"];
+  integrator = normalizeIntegrator[OptionValue["Integrator"]];
   batch      = TrueQ[OptionValue["Batch"]];
-  useCuba    = (integrator === "Vegas");
+  useCuba    = (integrator === "VEGAS");
   vegasOpts  = {"Integrator" -> integrator, "Batch" -> batch,
     "VegasEpsRel" -> OptionValue["VegasEpsRel"],
     "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
@@ -4573,6 +4239,18 @@ Module[
     "IBPFuncMap"           -> ibpFuncMap,
     "IBPProcessedSectors"  -> ibpProcessedSectors|>
 ];
+
+(* --------------------------------------------------------------------------
+   EvaluateTropicalMCIBP — thin wrapper for API continuity (plan.md §5.4).
+   The unified EvaluateTropicalMC routes Method->"IBP" to the same private
+   driver, so this just forwards.  Kept so existing callers (and the divergent
+   cross-check) need no change.
+   -------------------------------------------------------------------------- *)
+Options[EvaluateTropicalMCIBP] = Options[evaluateTropicalIBPDriver];
+
+EvaluateTropicalMCIBP[integrandSpec_Association, fanData_List,
+                      kinematicPoints_List, opts : OptionsPattern[]] :=
+  evaluateTropicalIBPDriver[integrandSpec, fanData, kinematicPoints, opts];
 
 
 (* --------------------------------------------------------------------------
