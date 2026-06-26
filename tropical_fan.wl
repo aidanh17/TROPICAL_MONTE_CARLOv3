@@ -52,6 +52,15 @@ ComputeDecompositiony::usage =
   "ComputeDecompositiony[vertexList] computes the simplicial fan decomposition \
 intersected with the positive orthant (y >= 0). Returns {dualVertices, simplexList}.";
 
+computeFanScaled::usage =
+  "computeFanScaled[vertexList] computes the simplicial fan decomposition \
+robustly in high ambient dimension by retrying ComputeDecomposition on a \
+scaled copy K*verts for K in {1, n+2, 2n+4, 6n+6} (the normal fan is \
+scale-invariant). Thin lattice simplices like conv{0,e_i} lack an interior \
+lattice point for ambient dim >= 4, which makes the unscaled call leak \
+$Failed; scaling enlarges the polytope so an interior lattice point exists. \
+Returns {dualVertices, simplexList}, or $Failed if every scale fails.";
+
 (* --- Error messages --- *)
 
 TropicalFan::polymake =
@@ -448,6 +457,31 @@ ComputeDecompositiony[vertex_List, OptionsPattern[]] := Module[
   simplices = Select[simplices, !MemberQ[#, badvertex] &];
 
   {vertices, simplices}
+];
+
+(* --------------------------------------------------------------------------
+   High-D fan robustness — K-scaling (lift_error_log L2)
+
+   The tropical fan is the NORMAL fan of the Newton polytope, which is
+   scale-invariant.  translateToOriginInteger needs an integer interior point,
+   which thin lattice simplices like conv{0,e_i} lack for ambient dim >= 4 — the
+   unscaled call then leaks $Failed into the Polymake input.  Computing the fan
+   from a scaled copy conv{0, K e_i} (which has the interior lattice point
+   (1,...,1) once K > n) yields the IDENTICAL fan.  We try K in {1, n+2, 2n+4,
+   6n+6}: K=1 is the cheap historical path (succeeds in low dim and stays
+   byte-identical there), then K=n+2 etc. for the thin high-D simplices.
+   -------------------------------------------------------------------------- *)
+
+computeFanScaled[verts_List] := Module[{n, fd},
+  n = Length[First[verts]];   (* ambient dimension *)
+  Do[
+    fd = Quiet[ComputeDecomposition[K*verts, "ShowProgress" -> False],
+               TropicalFan::polymake];
+    If[ListQ[fd] && Length[fd] == 2 && FreeQ[fd, $Failed] &&
+       Length[fd[[1]]] > 0 && Length[fd[[2]]] > 0,
+      Return[fd, Module]],
+    {K, {1, n + 2, 2 n + 4, 6 n + 6}}];
+  $Failed
 ];
 
 (* --------------------------------------------------------------------------

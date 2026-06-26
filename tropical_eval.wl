@@ -211,6 +211,9 @@ TropicalEval::liftdivergent = "ProcessSectorLifted: cone `1` — atilde `2` has 
 TropicalEval::liftfandim = "EvaluateTropicalMC with LiftData: the fan dimension is `1` but n+1 = `2` is required.  Supply the (n+1)-dimensional lifted fan.";
 TropicalEval::liftdegenerate = "EvaluateTropicalMCLifted: the lifted Newton polytope is lower-dimensional; automatic fan construction is not possible — supply an explicit complete simplicial fan via the \"FanData\" option.";
 
+(* ---- High-D VEGAS sizing guard (lift_error_log L1, plan.md §6.5) ---- *)
+TropicalEval::vegasbudget = "VEGAS budget too small: NSamples=`1` per sector is below 20*NStart=`2` (max sector dim `3`, resolved NStart=`4`).  In high dimension the adaptive grid never resolves and VEGAS can return a confidently-wrong value with a tight (lying) error bar.  Raise \"NSamples\" (or lower \"VegasNStart\") and cross-check against a reference rather than trusting the VEGAS error bar.";
+
 (* ============================================================================
    PRIVATE IMPLEMENTATION
    ============================================================================ *)
@@ -2020,11 +2023,44 @@ Module[{lines, polyVar},
 (* Shared VEGAS / sampler option defaults (plan.md §5.7) -- Join'd into every
    codegen / driver option block so the tuning defaults live in one place. *)
 $vegasOptionDefaults = {
-  "VegasEpsRel" -> 1.*^-12,
-  "VegasEpsAbs" -> 1.*^-300,
-  "VegasSeed"   -> 0,
-  "CubaMaxComp" -> 512
+  "VegasEpsRel"   -> 1.*^-12,
+  "VegasEpsAbs"   -> 1.*^-300,
+  "VegasSeed"     -> 0,
+  "CubaMaxComp"   -> 512,
+  (* High-D VEGAS sizing (lift_error_log L1, plan.md §6.5).  Automatic =>
+     resolved by resolveVegasSizing from the max sector dimension: the historical
+     {1000,500,1000} for d<=4 (low-dim byte-identical), ~base*3^(d-4) for d>=5.
+     An explicit integer is always honored verbatim. *)
+  "VegasNStart"    -> Automatic,
+  "VegasNIncrease" -> Automatic,
+  "VegasNBatch"    -> Automatic
 };
+
+(* --------------------------------------------------------------------------
+   resolveVegasSizing — high-D VEGAS grid sizing (lift_error_log L1, §6.5).
+
+   The CUBA-Vegas defaults nstart=1000, nincrease=500, nbatch=1000 are tuned for
+   ambient dim <= 4.  In high dimension the last iteration places only a few
+   points per axis, the adaptive grid never resolves, and VEGAS returns a
+   confidently-wrong value with a tight (lying) error bar.  This resolver keeps
+   the historical values for d<=4 (so low-dim output is byte-identical) and
+   scales by ~3^(d-4) for d>=5 (NStart ~ 8.1e4 at d=8).
+
+     opt           — the user option value (Automatic, or an explicit integer)
+     maxSectorDim  — the largest sector integration dimension
+     base          — the historical default for this knob (1000 / 500 / 1000)
+     kind          — "nstart" | "nincrease" | "nbatch" (for clarity; sizing is
+                     identical across knobs since each scales from its own base)
+
+   An explicit integer (or any non-Automatic value) is returned unchanged. *)
+resolveVegasSizing[opt_, maxSectorDim_Integer, base_Integer, kind_String] :=
+  If[opt === Automatic,
+    If[maxSectorDim <= 4,
+      base,
+      Ceiling[base * 3^(maxSectorDim - 4)]
+    ],
+    opt
+  ];
 
 (* Normalize the integrator vocabulary: canonical "MC" / "VEGAS"; accept the
    older "MonteCarlo" / "Vegas" spellings as aliases.  Returns "MC" | "VEGAS". *)
@@ -2564,7 +2600,8 @@ Options[emitMain] = Join[
 ];
 emitMain[info_Association, integrator_String, batch_:False,
          OptionsPattern[]] :=
-Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
+Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP,
+        maxSectorDim, nStart, nIncrease, nBatch, vegSizing},
   nSamples = OptionValue["NSamples"];
   seedBase = OptionValue["SeedBase"];
   epsrel   = ToString[CForm[N[OptionValue["VegasEpsRel"]]]];
@@ -2572,6 +2609,18 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
   seed     = ToString[OptionValue["VegasSeed"]];
   maxComp  = ToString[OptionValue["CubaMaxComp"]];
   isIBP    = TrueQ[info["IsIBP"]];
+
+  (* §6.5 high-D VEGAS sizing.  maxSectorDim = largest sector integration dim
+     (info["Dims"]); the resolved nstart/nincrease/nbatch substitute the
+     historical literal {1000,500,1000} in the Vegas() calls below.  For
+     maxSectorDim<=4 these resolve back to {1000,500,1000} so the MC and low-D
+     VEGAS bytes are unchanged. *)
+  maxSectorDim = If[ListQ[info["Dims"]] && Length[info["Dims"]] > 0,
+                    Max[info["Dims"]], 0];
+  nStart    = resolveVegasSizing[OptionValue["VegasNStart"],    maxSectorDim, 1000, "nstart"];
+  nIncrease = resolveVegasSizing[OptionValue["VegasNIncrease"], maxSectorDim,  500, "nincrease"];
+  nBatch    = resolveVegasSizing[OptionValue["VegasNBatch"],    maxSectorDim, 1000, "nbatch"];
+  vegSizing = ToString[nStart] <> ", " <> ToString[nIncrease] <> ", " <> ToString[nBatch];
 
   Which[
     integrator === "MC" && !isIBP,
@@ -2903,7 +2952,7 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
   code = code <> "            std::vector<cubareal> integ(ncomp), err(ncomp), prob(ncomp);\n";
   code = code <> "            int neval = 0, fail = 0;\n";
   code = code <> "            Vegas(gb_dim, ncomp, cubaBatch, nullptr, 1, epsrel, epsabs, 0, seed,\n";
-  code = code <> "                  0, (int)maxeval, 1000, 500, 1000, 0, nullptr, nullptr,\n";
+  code = code <> "                  0, (int)maxeval, " <> vegSizing <> ", 0, nullptr, nullptr,\n";
   code = code <> "                  &neval, &fail, integ.data(), err.data(), prob.data());\n";
   code = code <> "            for (int c = 0; c < cs; ++c) {\n";
   code = code <> "                tre[k0 + c] += integ[2*c];       tim[k0 + c] += integ[2*c + 1];\n";
@@ -2964,7 +3013,7 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
   code = code <> "    }\n";
   code = code <> "    int neval = 0, fail = 0; cubareal I[2], E[2], Pr[2];\n";
   code = code <> "    Vegas(g_dim, 2, cubaWrap, nullptr, 1, epsrel, epsabs, 0, seed,\n";
-  code = code <> "          0, (int)maxeval, 1000, 500, 1000, 0, nullptr, nullptr,\n";
+  code = code <> "          0, (int)maxeval, " <> vegSizing <> ", 0, nullptr, nullptr,\n";
   code = code <> "          &neval, &fail, I, E, Pr);\n";
   code = code <> "    out[0] = I[0]; out[1] = I[1]; err[0] = E[0]; err[1] = E[1];\n";
   code = code <> "}\n";
@@ -3062,7 +3111,7 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
   code = code <> "    }\n";
   code = code <> "    int neval = 0, fail = 0; cubareal I[2], E[2], Pr[2];\n";
   code = code <> "    Vegas(g_dim, 2, cubaWrap, nullptr, 1, epsrel, epsabs, 0, seed,\n";
-  code = code <> "          0, (int)maxeval, 1000, 500, 1000, 0, nullptr, nullptr,\n";
+  code = code <> "          0, (int)maxeval, " <> vegSizing <> ", 0, nullptr, nullptr,\n";
   code = code <> "          &neval, &fail, I, E, Pr);\n";
   code = code <> "    out[0] = I[0]; out[1] = I[1]; err[0] = E[0]; err[1] = E[1];\n";
   code = code <> "}\n";
@@ -3140,15 +3189,18 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP},
    exactly today's behavior ("MonteCarlo"), which stays byte-identical (B0).
    -------------------------------------------------------------------------- *)
 Options[GenerateCppMonteCarlo] = {
-  "NSamples"    -> 1000000,
-  "MaxDim"      -> 20,
-  "SeedBase"    -> 42,
-  "Integrator"  -> "MonteCarlo",   (* "MonteCarlo" | "Vegas" *)
-  "Batch"       -> False,          (* True => chunked-ncomp Vegas (Vegas only) *)
-  "VegasEpsRel" -> 1.*^-12,
-  "VegasEpsAbs" -> 1.*^-300,
-  "VegasSeed"   -> 0,
-  "CubaMaxComp" -> 512
+  "NSamples"       -> 1000000,
+  "MaxDim"         -> 20,
+  "SeedBase"       -> 42,
+  "Integrator"     -> "MonteCarlo",   (* "MonteCarlo" | "Vegas" *)
+  "Batch"          -> False,          (* True => chunked-ncomp Vegas (Vegas only) *)
+  "VegasEpsRel"    -> 1.*^-12,
+  "VegasEpsAbs"    -> 1.*^-300,
+  "VegasSeed"      -> 0,
+  "CubaMaxComp"    -> 512,
+  "VegasNStart"    -> Automatic,
+  "VegasNIncrease" -> Automatic,
+  "VegasNBatch"    -> Automatic
 };
 
 (* --------------------------------------------------------------------------
@@ -3183,7 +3235,10 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
     "VegasEpsRel" -> OptionValue["VegasEpsRel"],
     "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
     "VegasSeed"   -> OptionValue["VegasSeed"],
-    "CubaMaxComp" -> OptionValue["CubaMaxComp"]];
+    "CubaMaxComp" -> OptionValue["CubaMaxComp"],
+    "VegasNStart"    -> OptionValue["VegasNStart"],
+    "VegasNIncrease" -> OptionValue["VegasNIncrease"],
+    "VegasNBatch"    -> OptionValue["VegasNBatch"]];
 
   code = defs["Defs"] <> mainCode;
 
@@ -3395,7 +3450,10 @@ Module[
     "VegasEpsRel" -> OptionValue["VegasEpsRel"],
     "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
     "VegasSeed" -> OptionValue["VegasSeed"],
-    "CubaMaxComp" -> OptionValue["CubaMaxComp"]};
+    "CubaMaxComp" -> OptionValue["CubaMaxComp"],
+    "VegasNStart"    -> OptionValue["VegasNStart"],
+    "VegasNIncrease" -> OptionValue["VegasNIncrease"],
+    "VegasNBatch"    -> OptionValue["VegasNBatch"]};
   eps        = integrandSpec["RegulatorSymbol"];
 
   (* --- Lifting setup (plan.md §6.2) --- *)
@@ -3716,6 +3774,32 @@ Module[
 
     specForCpp = If[eps =!= None, integrandSpec /. eps -> epsSub, integrandSpec];
 
+    (* §6.5 vegasbudget guard (lift_error_log L1).  Only meaningful for VEGAS.
+       NSamples (= maxeval/sector) must exceed a multiple of the resolved NStart
+       or the adaptive grid never resolves and the quoted error bar LIES (a tight
+       but systematically-biased value).  The historical 20x floor was too loose
+       at high d: the 8D case NStart=81000 passed at NSamples=4e6 (49x) yet was
+       0.118% biased LOW with a ~1.3e-6 bar.  Empirically (L1 sweep) the VEGAS
+       grid needs ~100 adaptive passes to resolve in 8D, so for d>=5 we require
+       NSamples >= 100*NStart (8.1e6 at d=8 -> fires on the previously-silent
+       4e6); d<=4 keeps the 20x floor (low-dim behaviour unchanged).
+       guardFactor(d): 20 for d<=4, 100 for d>=5.
+       maxSD is the largest convergent-sector integration dim; NStart is what
+       resolveVegasSizing hands the codegen for that dim. *)
+    If[integrator === "VEGAS",
+      Module[{secDims, maxSD, resolvedNStart, guardFactor, threshold},
+        secDims = Cases[convForCpp, a_Association :> a["Dimension"]];
+        maxSD = If[secDims === {} || !VectorQ[secDims, IntegerQ], 0, Max[secDims]];
+        resolvedNStart = resolveVegasSizing[OptionValue["VegasNStart"], maxSD, 1000, "nstart"];
+        guardFactor = If[maxSD >= 5, 100, 20];
+        threshold = guardFactor*resolvedNStart;
+        If[IntegerQ[resolvedNStart] && nSamples < threshold,
+          Message[TropicalEval::vegasbudget,
+            nSamples, threshold, maxSD, resolvedNStart]
+        ]
+      ]
+    ];
+
     cppResult = GenerateCppMonteCarlo[
       convForCpp,
       Select[divForCpp, AssociationQ],
@@ -4010,9 +4094,12 @@ Module[
         PolytopeVertices[(Times @@ liftedSpec["Polynomials"])^(-1),
                          liftedSpec["Variables"]],
         TropicalFan::polymake];
+      (* §6.4 / lift_error_log L2: use the K-scaled fan (normal fan is
+         scale-invariant) so thin lattice simplices in ambient dim >= 4 do not
+         leak $Failed.  liftdegenerate then fires only for a genuinely
+         lower-dimensional lifted polytope. *)
       liftedFan = If[ListQ[verts],
-        Quiet[ComputeDecomposition[verts, "ShowProgress" -> False],
-              TropicalFan::polymake],
+        Quiet[computeFanScaled[verts], TropicalFan::polymake],
         $Failed];
       If[!ListQ[liftedFan] || Length[liftedFan] < 2,
         Message[TropicalEval::liftdegenerate];  Return[$Failed]
@@ -4871,15 +4958,18 @@ Module[
    implemented for the IBP path (T8, deferred) -> falls back to per-kp Vegas.
    -------------------------------------------------------------------------- *)
 Options[GenerateCppMonteCarloIBP] = {
-  "NSamples"    -> 1000000,
-  "MaxDim"      -> 20,
-  "SeedBase"    -> 42,
-  "Integrator"  -> "MonteCarlo",
-  "Batch"       -> False,
-  "VegasEpsRel" -> 1.*^-12,
-  "VegasEpsAbs" -> 1.*^-300,
-  "VegasSeed"   -> 0,
-  "CubaMaxComp" -> 512
+  "NSamples"       -> 1000000,
+  "MaxDim"         -> 20,
+  "SeedBase"       -> 42,
+  "Integrator"     -> "MonteCarlo",
+  "Batch"          -> False,
+  "VegasEpsRel"    -> 1.*^-12,
+  "VegasEpsAbs"    -> 1.*^-300,
+  "VegasSeed"      -> 0,
+  "CubaMaxComp"    -> 512,
+  "VegasNStart"    -> Automatic,
+  "VegasNIncrease" -> Automatic,
+  "VegasNBatch"    -> Automatic
 };
 
 GenerateCppMonteCarloIBP[convergentSectors_List, ibpSectors_List,
@@ -4907,7 +4997,10 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
     "VegasEpsRel" -> OptionValue["VegasEpsRel"],
     "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
     "VegasSeed"   -> OptionValue["VegasSeed"],
-    "CubaMaxComp" -> OptionValue["CubaMaxComp"]];
+    "CubaMaxComp" -> OptionValue["CubaMaxComp"],
+    "VegasNStart"    -> OptionValue["VegasNStart"],
+    "VegasNIncrease" -> OptionValue["VegasNIncrease"],
+    "VegasNBatch"    -> OptionValue["VegasNBatch"]];
 
   code = defs["Defs"] <> mainCode;
 
@@ -4993,7 +5086,10 @@ Module[
     "VegasEpsRel" -> OptionValue["VegasEpsRel"],
     "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
     "VegasSeed" -> OptionValue["VegasSeed"],
-    "CubaMaxComp" -> OptionValue["CubaMaxComp"]};
+    "CubaMaxComp" -> OptionValue["CubaMaxComp"],
+    "VegasNStart"    -> OptionValue["VegasNStart"],
+    "VegasNIncrease" -> OptionValue["VegasNIncrease"],
+    "VegasNBatch"    -> OptionValue["VegasNBatch"]};
 
   If[workDir === Automatic,
     workDir = DirectoryName[$InputFileName];

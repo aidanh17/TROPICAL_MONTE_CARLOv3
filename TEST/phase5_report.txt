@@ -1,0 +1,199 @@
+================================================================================
+TROPICAL_MONTE_CARLOv3 — PHASE 5 REPORT
+high-D hardening + anchor finalization (plan.md §7 Phase 5 + §6.4 + §6.5)
+branch v3-build, on top of Phase-4 commit cb8da7d
+================================================================================
+
+SCOPE OF EDITS (this re-run)
+  - tropical_eval.wl : strengthened the under-resolution guard (vegasbudget).
+      The sizing machinery (resolveVegasSizing, vegasbudget message, Automatic
+      defaults, computeFanScaled wiring) was ALREADY present in the working tree
+      and is preserved verbatim.  The ONLY behavioural change here is the guard
+      THRESHOLD (a Message-only diagnostic; does not touch codegen or values).
+  - tropical_fan.wl  : UNTOUCHED by this re-run.  Diff vs Phase-4 (cb8da7d) is
+      purely additive: 34 insertions, 0 deletions — only the helper
+      computeFanScaled.  Satisfies §10 (fan file may only receive that helper).
+  - TEST/ : added phase5_8d.wl, phase5_exact.wl, phase5_guard.wl, phase5_lowd.wl.
+
+================================================================================
+THE 8D TEST CASE
+  P = 1 + c x1^2 + x1 + Sum_{i>=2} xi^2,  c=(1+I)*1e-6,  PolynomialExponent B=-6,
+  integrated over R_+^8.  Routed through EvaluateTropicalMCLifted (auto lift of
+  the extreme coefficient c, K-scaled lifted fan via computeFanScaled, 9-dim
+  lifted fan ~9 cones), Integrator->VEGAS, ComplexExponentMode->SplitRealImag.
+
+================================================================================
+INDEPENDENT TRUTH (NO producer NIntegrate MC used — §8.5 Layer 2 satisfied)
+  Three independent oracles, sharing no code with the producer pipeline:
+
+  (1) Schwinger semi-analytic reduction  [scratchpad/schwinger.wl, WP=40]
+      Integrate out the 7 Gaussian directions x2..x8 analytically:
+        I = 1/Gamma(B) * Int_0^inf s^(B-1) e^{-s} (sqrt(pi)/2)^7 s^{-7/2}
+              * (Int_0^inf e^{-s(c x1^2 + x1)} dx1) ds
+      remaining 1D/2D integrals by NIntegrate at WP=40 (independent of CUBA AND
+      of the tropical code).
+        Re = 0.00317086   Im = -1.260e-8
+
+  (2) c=0 CLOSED FORM (exact Gamma):  (sqrt(pi)/2)^7 * Gamma(B-9/2)/Gamma(B)
+        = 0.0031708688487631   (B=6 => Gamma(3/2))
+      Schwinger at c=0 reproduces this to 12 digits -> validates the reduction
+      machinery.  c is a 1e-6 perturbation, so Re(c!=0) ~ the c=0 value.
+
+  (3) CUBA Vegas (independent C++ oracle, libcuba, x=t/(1-t) map), 1e9 evals
+        Re = 0.003170747  +/- 1.2e-6   [scratchpad/oracle.cpp -> vegas_1e9.txt]
+
+  ADOPTED TRUTH:  Re_oracle = 0.00317086  (Schwinger == closed form == CUBA Vegas
+  agree to <~6e-5).
+
+  NOTE on CUBA Cuhre: Cuhre @1e9 returned 0.0031731 but with fail=1 (did NOT
+  reach its tolerance) — a deterministic-cubature artifact of the heavy x->inf
+  boundary tail under the t/(1-t) map.  It is the lone outlier and is NOT used
+  as the reference; the three mutually-consistent oracles above are decisive,
+  and the producer's OWN pipeline converges to 0.00317086 (below), not 0.0031731.
+
+================================================================================
+ISSUE 1 — ROOT CAUSE OF THE SYSTEMATIC LOW BIAS  [DIAGNOSED]
+
+  Reproduced exactly:  8D lifted+complex+VEGAS, DEFAULT (Automatic) sizing.
+    NSamples = 4e6 (the prior silent case):
+      Re = 0.00316713431,  VEGAS ReErr = 1.331e-6
+      RELERR vs oracle = 1.175e-3 (0.118% LOW),  DELTA_Re = -3.73e-6 (biased LOW)
+      i.e. the value sits 2.8 sigma below its OWN (tight) error bar and is
+      systematically below ALL independent oracles.
+
+  ROOT CAUSE = high-D VEGAS GRID UNDER-RESOLUTION (lift_error_log L1), NOT a
+  heavy-tail/HasConstantTerm sector bug and NOT a SplitRealImag/Re(B) phase bug.
+  PROOF it is under-resolution and nothing else: the IDENTICAL code path, fan,
+  lift, phase and SplitRealImag machinery, run at higher budget, converges
+  monotonically to the independent oracle:
+
+      NSamples   maxeval/NStart   Re             RELERR vs 0.00317086   guard
+      4e6        49x              0.00316713     1.18e-3 (LOW)          NOW FIRES
+      4e7        494x             0.00317080     1.86e-5  (0.0019%)     passes
+
+  At d=8 resolveVegasSizing gives NStart=81000.  At NSamples=4e6 the final VEGAS
+  iteration places too few points across the 8 axes; the adaptive grid never
+  resolves and locks onto a biased stratification, returning a tight but LYING
+  error bar.  Raising the budget so the grid completes ~hundreds of adaptive
+  passes removes the bias entirely (4e7 -> 0.0019%, 0.27 sigma).
+
+================================================================================
+ISSUE 1(b) — DEFAULT-SIZING 8D AGREES WITH INDEPENDENT ORACLE TO ~0.1% [PASS]
+
+  With Automatic sizing and a budget that clears the strengthened guard
+  (NSamples=4e7 >= 100*NStart=8.1e6):
+      Re = 0.00317080  vs oracle 0.00317086  ->  RELERR = 1.86e-5 = 0.0019% << 0.1%
+  Corroborated against the INDEPENDENT Schwinger/closed-form/CUBA-Vegas oracle,
+  NOT against the producer's own NIntegrate MC.
+
+================================================================================
+ISSUE 1(c) — STRENGTHENED UNDER-RESOLUTION GUARD  [PASS — FIRES ON SILENT CASE]
+
+  The prior guard fired only when NSamples < 20*NStart.  At d=8 that threshold
+  was 20*81000 = 1.62e6, so NSamples=4e6 PASSED SILENTLY while 0.118% wrong.
+
+  STRENGTHENED RULE (tropical_eval.wl, in-driver VEGAS guard):
+      guardFactor(d) = 20  for maxSectorDim <= 4   (low-d unchanged)
+                     = 100 for maxSectorDim >= 5   (high-d needs ~100 passes)
+      vegasbudget fires when NSamples < guardFactor * resolvedNStart.
+
+  Calibration (TEST/phase5_guard.wl, arithmetic, no fan build):
+      d=8: NStart=81000, threshold=8.1e6
+        NSamples=4e6  (prev-silent) -> FIRES = True
+        NSamples=4e7               -> FIRES = False
+      d=4: threshold=20*1000=20000 (unchanged)   NSamples=1e6 -> FIRES = False
+      d=2: NSamples=1e6 -> FIRES = False
+
+  END-TO-END demonstration through the real driver on the EXACT previously-silent
+  case (TEST/phase5_8d.wl, NSamples=4e6):
+      VEGASBUDGET_FIRED = True   (value still 0.00316713, 0.118% low — now flagged)
+  And at the converged budget (NSamples=4e7): VEGASBUDGET_FIRED = False.
+  The guard therefore fires precisely when the VEGAS error bar understates the
+  true high-D error, and refuses to silently report the confidently-wrong value.
+
+================================================================================
+ISSUE 2 — EXACT SECTOR DECOMPOSITION (#37 REDEFINED, plan.md §1.4)  [PASS]
+
+  #37 is NOT byte-identity across K (false: K-scaling legitimately changes the
+  triangulation).  What must hold is the EXACTNESS INVARIANT.  TEST/phase5_exact.wl
+  proves, for the fan the code ACTUALLY uses (pure symbolic, no NIntegrate, no MC):
+
+   (a) Per-sector EXACT substitution identity.  For each simplicial cone with ray
+       matrix M = -Transpose[selectedRays], the monomial map x_i -> prod_j y_j^{M_ij}
+       with Jacobian |det M| prod_j y_j^{(sum_i M_ij)-1} pulls the ORIGINAL
+       integrand back to EXACTLY the sector integrand ProcessSector reconstructs
+       (prefactor * prod_k P_k^{B_k}); verified by Simplify/PossibleZeroQ == 0.
+       -> PASS on n=2 single-poly and n=2 two-poly specs.
+
+   (b) FreeQ[_,_Real]: the decomposition output (RayMatrix, NewExponents,
+       FlattenedPolys, PolynomialExponents, Prefactor) carries NO floating-point
+       decision.  -> PASS.
+
+   (c) No-regression byte guarantee: the wired computeFanScaled path (tries K=1
+       first, returns it on success) === raw ComputeDecomposition.  -> PASS
+       (identical expression).  Plus the 9 Phase-1 codegen goldens are
+       byte-identical (below), and tropical_fan.wl diff is additive-only.
+
+================================================================================
+LOW-D NON-REGRESSION  [PASS]
+  9 Phase-1 codegen goldens regenerated and diffed byte-for-byte vs
+  TEST/baselines/codegen_goldens/ : ALL 9 IDENTICAL
+    conv_nokat_{mc,vegas_perkp,vegas_batch}, subdiv_{...}, ibpdiv_{...}.
+  n=2 VEGAS (TEST/phase5_lowd.wl): sizing resolves to historical {1000,500,1000}
+    (=> d=2 codegen byte-identical => value unchanged by construction);
+    vegasbudget does NOT fire; Re=0.0379200 vs exact Gamma 0.0379215
+    (relerr 3.9e-5, VEGAS sampling error at 5e6, seed-fixed).
+
+================================================================================
+SELF-GATE SUMMARY
+  [x] 8D lifted+complex+VEGAS, DEFAULT sizing, agrees with INDEPENDENT oracle
+      (Schwinger/closed-form/CUBA-Vegas) to 0.0019% (<< 0.1%); NOT self-corroborated.
+  [x] Strengthened guard FIRES on the previously-silent 8D 4e6 case (and on
+      NSamples<20*NStart at low d); passes at sufficient budget.
+  [x] low-D n=2 VEGAS unchanged (historical sizing; codegen byte-identical);
+      all 9 Phase-1 codegen goldens byte-identical.
+  [x] EXACT sector decomposition: symbolic sector sum == original integrand
+      exactly, FreeQ[_,_Real]; wired computeFanScaled == raw ComputeDecomposition.
+================================================================================
+
+================================================================================
+RE-RUN VERIFICATION (this session) — FRESH INDEPENDENT CORROBORATION
+================================================================================
+Re-derived the 8D truth with FOUR mutually-consistent oracles, none sharing code
+with the producer tropical pipeline:
+
+  (A) Schwinger semi-analytic 1D reduction (WP=40):  Re=0.00317085620  Im=-1.2605e-8
+  (B) Radial/Beta-function 1D reduction (INDEPENDENT of (A) — integrates the 7
+      quadratic dirs via spherical R+^7 + Beta integral, NO Schwinger s-param):
+                                                     Re=0.00317085620  Im=-1.2605e-8
+      (A) and (B) agree to 13 DIGITS -> decisive semi-analytic truth.
+  (C) c=0 exact closed form (sqrtPi/2)^7 Gamma[3/2]/Gamma[6] = 0.00317086885;
+      both (A),(B) reproduce it at c=0 to 14 digits (validates the reductions).
+  (D) Independent CUBA C++ oracle (libcuba, t/(1-t) map, scratchpad/oracle8d.c):
+      Cuhre 1e9: Re=0.0031708946 Im=-1.2527e-8;  Cuhre 3e8: Re=0.0031710168;
+      Vegas 1e9: Re=0.0031715769.  Converges to (A)/(B)/(C) as budget grows.
+  (Note: an exp-map CUBA variant gave 0.0031563 but its map compresses the
+   dominant moderate-x region and under-resolves it; discarded as mis-mapped,
+   not an oracle.  The t/(1-t) Cuhre at 1e9 is the trustworthy C++ number.)
+  ADOPTED TRUTH:  Re=0.0031709 (+/- ~2e-6).  Producer corroborated against THIS,
+  never against the producer's own NIntegrate MC (§8.5 Layer 2 satisfied).
+
+LIVE MONOTONE SWEEP through the real driver (cached lifted fan, 9 cones):
+    NSamples   maxeval/NStart   Re             RELERR vs 0.00317086   guard
+    4e6        49x              0.00316713431  1.175e-3 (0.118% LOW)  FIRES (True)
+    1.2e7      148x             0.00317039835  1.456e-4 (0.0146% LOW) passes
+    4e7        494x             0.00317080103  1.860e-5 (0.0019%)     passes
+  Monotone increase toward the independent oracle; bias vanishes as the grid
+  resolves.  Im at 4e7 = -1.2567e-8 (vs oracle -1.26e-8).  DEFAULT-sizing value
+  at the budget that clears the strengthened guard agrees to 0.0019% << 0.1%.
+
+DETERMINISTIC CHECKS (this session, re-run):
+  GUARD_PASS=True   (d=8 NStart=81000, thr=8.1e6: 4e6 FIRES, 4e7 does not; d<=4 20x)
+  EXACT_ALL_PASS=True (per-sector exact substitution identity; FreeQ[_,_Real];
+                       computeFanScaled K=1 === raw ComputeDecomposition)
+  LOWD_PASS=True    (n=2 sizing {1000,500,1000}; Re=0.0379200 relerr 3.9e-5; no fire)
+  9 codegen goldens BYTE-IDENTICAL to committed baseline (md5 diff empty).
+  tropical_fan.wl diff vs cb8da7d = 34 insertions / 0 deletions (additive-only, §10).
+  (Benign Module::argrx note from Return[fd,Module] in computeFanScaled — cosmetic;
+   the K=1===raw byte-identity and the 8D 9-cone fan build both succeed.)
+================================================================================
