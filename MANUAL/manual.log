@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  26 JUN 2026 13:30
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  26 JUN 2026 16:51
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -589,7 +589,7 @@ LaTeX Font Info:    Trying to load font information for T1+lmtt on input line 1
 File: t1lmtt.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
 )
 LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <10.95> not available
-(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 58.
+(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 63.
 
 
 
@@ -669,7 +669,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [6]
-<complex_flatten_spiral.pdf, id=361, 527.9725pt x 281.05pt>
+<complex_flatten_spiral.pdf, id=372, 527.9725pt x 281.05pt>
 File: complex_flatten_spiral.pdf Graphic file (type pdf)
 <use complex_flatten_spiral.pdf>
 Package pdftex.def Info: complex_flatten_spiral.pdf  used on input line 246.
@@ -715,7 +715,24 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [9]
-Overfull \hbox (5.38011pt too wide) in paragraph at lines 348--349
+Overfull \hbox (11.1651pt too wide) in paragraph at lines 338--339
+\T1/lmtt/m/n/10.95 ProcessSectorLifted[...,"Eps"->eps] \T1/lmr/m/n/10.95 clas-s
+i-fies each $[]$ at $\OML/lmm/m/it/10.95 " \OMS/lmsy/m/n/10.95 ! \OT1/lmr/m/n/1
+0.95 0$ \T1/lmr/m/it/10.95 ex-actly \T1/lmr/m/n/10.95 (\T1/lmtt/m/n/10.95 Possi
+bleZeroQ[Im]
+ []
+
+
+
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 13.59999pt, for example:
+(fancyhdr)                \setlength{\headheight}{13.59999pt}.
+(fancyhdr)                You might also make \topmargin smaller:
+(fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
+
+[10]
+Overfull \hbox (5.38011pt too wide) in paragraph at lines 360--361
 []\OT1/lmr/m/n/10.95 (\OML/lmm/m/it/10.95 i []\OT1/lmr/m/n/10.95 (\OML/lmm/m/it
 /10.95 B\OT1/lmr/m/n/10.95 ) [] \OMS/lmsy/m/n/10.95 j\OML/lmm/m/it/10.95 P\OMS/
 lmsy/m/n/10.95 j\OT1/lmr/m/n/10.95 )$\T1/lmr/m/n/10.95 ; us-ing \T1/lmtt/m/n/10
@@ -734,7 +751,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[10] (/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstlang1.sty
+[11] (/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstlang1.sty
 File: lstlang1.sty 2024/09/23 1.10c listings language file
 )
 (/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstlang1.sty
@@ -754,37 +771,37 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[11]
-Underfull \hbox (badness 10000) in paragraph at lines 401--402
+[12]
+Underfull \hbox (badness 10000) in paragraph at lines 413--414
 \T1/lmtt/m/n/10.95 {<|"PolyIndex","ExponentVector","Coefficient","Magnitude","S
 uggestedK"|>}
  []
 
 
-Overfull \hbox (132.84415pt too wide) in paragraph at lines 403--404
+Overfull \hbox (132.84415pt too wide) in paragraph at lines 415--416
 []\T1/lmr/m/n/10.95 Applies lift-ing: each rule is \T1/lmtt/m/n/10.95 <|"PolyIn
 dex"->j,"ExponentVector"->$\OML/lmm/m/it/10.95 $\T1/lmtt/m/n/10.95 ,"k"->k|>\T
 1/lmr/m/n/10.95 .
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 405--406
+Underfull \hbox (badness 10000) in paragraph at lines 417--418
 []\T1/lmr/m/n/10.95 Runs
  []
 
 
-Overfull \hbox (6.65706pt too wide) in paragraph at lines 407--408
+Overfull \hbox (6.65706pt too wide) in paragraph at lines 419--420
 []
  []
 
 
-Underfull \hbox (badness 1360) in paragraph at lines 414--415
+Underfull \hbox (badness 1360) in paragraph at lines 426--427
 []\T1/lmr/m/n/10.95 Constructs $\OML/lmm/m/it/10.95 G[]$\T1/lmr/m/n/10.95 , $\O
 ML/lmm/m/it/10.95 G[]$\T1/lmr/m/n/10.95 , Re-main-der.
  []
 
 
-Underfull \hbox (badness 1769) in paragraph at lines 421--422
+Underfull \hbox (badness 1769) in paragraph at lines 433--434
 []\T1/lmr/m/n/10.95 Symbolic IBP de-com-po-si-tion: iden-ti-fies all di-ver-
  []
 
@@ -797,15 +814,15 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[12]
-Underfull \hbox (badness 10000) in paragraph at lines 449--450
+[13]
+Underfull \hbox (badness 10000) in paragraph at lines 461--462
 \T1/lmr/m/n/10.95 e-mat-ica heads or \T1/lmtt/m/n/10.95 ComplexInfinity\T1/lmr/
 m/n/10.95 /\T1/lmtt/m/n/10.95 Indeterminate\T1/lmr/m/n/10.95 , \T1/lmtt/m/n/10.
 95 GenerateCpp \T1/lmr/m/n/10.95 re-turns \T1/lmtt/m/n/10.95 $Failed
  []
 
 
-Overfull \hbox (35.46402pt too wide) in paragraph at lines 473--491
+Overfull \hbox (35.46402pt too wide) in paragraph at lines 485--503
  [][] 
  []
 
@@ -818,23 +835,23 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[13]
-Underfull \hbox (badness 10000) in paragraph at lines 509--510
+[14]
+Underfull \hbox (badness 10000) in paragraph at lines 521--522
 []\T1/lmr/m/n/10.95 Auto-detects/applies lift-ing and routes
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 510--511
+Underfull \hbox (badness 10000) in paragraph at lines 522--523
 []\T1/lmr/m/n/10.95 Forces \T1/lmtt/m/n/10.95 "Method" -> "Subtraction"
  []
 
 
-Overfull \hbox (2.36484pt too wide) in paragraph at lines 511--512
+Overfull \hbox (2.36484pt too wide) in paragraph at lines 523--524
 []\T1/lmr/m/n/10.95 Superseded by \T1/lmtt/m/n/10.95 EvaluateTropicalMC[...,
  []
 
 
-Overfull \hbox (513.85796pt too wide) in paragraph at lines 516--535
+Overfull \hbox (867.2863pt too wide) in paragraph at lines 528--547
  [] 
  []
 
@@ -847,24 +864,24 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[14]
-Overfull \hbox (156.50438pt too wide) in paragraph at lines 543--554
+[15]
+Overfull \hbox (156.50438pt too wide) in paragraph at lines 555--566
  [] 
  []
 
 
-Overfull \hbox (6.65706pt too wide) in paragraph at lines 560--561
+Overfull \hbox (6.65706pt too wide) in paragraph at lines 572--573
 []
  []
 
 
-Underfull \hbox (badness 7362) in paragraph at lines 562--563
+Underfull \hbox (badness 7362) in paragraph at lines 574--575
 []\T1/lmr/m/n/10.95 IBP for-mula vs. \T1/lmtt/m/n/10.95 NIntegrate\T1/lmr/m/n/1
 0.95 . Re-turns
  []
 
 
-Underfull \hbox (badness 1137) in paragraph at lines 576--577
+Underfull \hbox (badness 1137) in paragraph at lines 588--589
 []$\OMS/lmsy/m/n/10.95 f\OML/lmm/m/it/10.95 P[]; []\OMS/lmsy/m/n/10.95 g$\T1/lm
 r/m/n/10.95 ---symbolic poly-no-mial ex-pres-sions; co-ef-fi-
  []
@@ -878,7 +895,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[15]
+[16]
 
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
@@ -887,31 +904,31 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[16]
-Overfull \hbox (17.15732pt too wide) in paragraph at lines 656--657
+[17]
+Overfull \hbox (17.15732pt too wide) in paragraph at lines 669--670
 []\T1/lmtt/m/n/10.95 <|"VariableTerms"->...,"PolynomialTerms"->...|>\T1/lmr/m/n
 /10.95 .| 
  []
 
 
-Overfull \hbox (247.10666pt too wide) in paragraph at lines 657--658
+Overfull \hbox (247.10666pt too wide) in paragraph at lines 670--671
 []\T1/lmtt/m/n/10.95 <|"FullPolys","SimplifiedPolys","Prefactor","DivVarIndex",
 "DivVarExp","Dimension",...|>\T1/lmr/m/n/10.95 .| 
  []
 
 
-Overfull \hbox (185.78725pt too wide) in paragraph at lines 676--677
+Overfull \hbox (185.78725pt too wide) in paragraph at lines 689--690
 []\T1/lmtt/m/n/10.95 <|"FlatPolys","Prefactor","Dimension"(n-1),"PolyExponents"
 ,"LogInsertions"|>\T1/lmr/m/n/10.95 .| 
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 677--678
+Underfull \hbox (badness 10000) in paragraph at lines 690--691
 []\T1/lmr/m/n/10.95 List of term as-so-ci-a-tions, each with:
  []
 
 
-Overfull \hbox (358.24925pt too wide) in paragraph at lines 677--678
+Overfull \hbox (358.24925pt too wide) in paragraph at lines 690--691
 \T1/lmtt/m/n/10.95 "FlatPolys","Prefactor","Dimension"(n),"PolyExponents","Coef
 f0","Coeff1","LogInsertions","Alpha0","Alpha1"\T1/lmr/m/n/10.95 .| 
  []
@@ -925,57 +942,40 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[17]
+[18]
 LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <14.4> not available
-(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 686.
+(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 701.
 
-Underfull \hbox (badness 1997) in paragraph at lines 706--707
+Underfull \hbox (badness 10000) in paragraph at lines 720--721
+[]\T1/lmr/m/n/10.95 (Convergent-lift back-stop) se-lected
+ []
+
+
+Underfull \hbox (badness 1596) in paragraph at lines 720--721
+\T1/lmr/m/n/10.95 pivot leaves $[]\OT1/lmr/m/n/10.95 ([]) \OMS/lmsy/m/n/10.95 ^
+^T \OT1/lmr/m/n/10.95 0$ \T1/lmr/m/n/10.95 with no
+ []
+
+
+Underfull \hbox (badness 7308) in paragraph at lines 722--723
+\T1/lmr/m/n/10.95 with lift-ing \T1/lmr/m/it/10.95 and \T1/lmr/m/n/10.95 di-ver
+-gence; use
+ []
+
+
+Underfull \hbox (badness 1997) in paragraph at lines 723--724
 []\T1/lmr/m/n/10.95 Fan in lifted mode is not $\OT1/lmr/m/n/10.95 (\OML/lmm/m/i
 t/10.95 n[]\OT1/lmr/m/n/10.95 1)$\T1/lmr/m/n/10.95 -
  []
 
 
-Underfull \hbox (badness 5302) in paragraph at lines 707--708
+Underfull \hbox (badness 5302) in paragraph at lines 724--725
 []\T1/lmr/m/n/10.95 Lifted New-ton poly-tope is lower-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 707--708
+Underfull \hbox (badness 10000) in paragraph at lines 724--725
 \T1/lmr/m/n/10.95 dimensional; sup-ply ex-plicit
- []
-
-
-
-
-Package fancyhdr Warning: \headheight is too small (12.0pt): 
-(fancyhdr)                Make it at least 13.59999pt, for example:
-(fancyhdr)                \setlength{\headheight}{13.59999pt}.
-(fancyhdr)                You might also make \topmargin smaller:
-(fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
-
-[18]
-Overfull \hbox (3.807pt too wide) in paragraph at lines 730--732
-[]\T1/lmr/bx/n/10.95 High-D VE-GAS er-ror bars can lie. \T1/lmr/m/n/10.95 VE-GA
-S de-faults (\T1/lmtt/m/n/10.95 NStart=1000, NIncrease=500,
- []
-
-
-Overfull \hbox (27.2394pt too wide) in paragraph at lines 730--732
-\T1/lmtt/m/n/10.95 NBatch=1000\T1/lmr/m/n/10.95 ) pro-duce con-fi-dently wrong 
-val-ues for sec-tor di-men-sion $\U/msa/m/n/10.95 & \OT1/lmr/m/n/10.95 6$\T1/lm
-r/m/n/10.95 . \T1/lmtt/m/n/10.95 resolveVegasSizing
- []
-
-
-Overfull \hbox (4.03336pt too wide) in paragraph at lines 736--738
-[]\T1/lmr/bx/n/10.95 Kinematic-symbol co-ef-fi-cients can-not be auto-lifted. \
-T1/lmtt/m/n/10.95 DetectExtremeCoefficients
- []
-
-
-Underfull \hbox (badness 1270) in paragraph at lines 748--750
-[]\T1/lmr/bx/n/10.95 FIESTA cross-checks re-quire FI-ESTA and path ed-its. \T1/
-lmr/m/n/10.95 The \T1/lmtt/m/n/10.95 CC/ \T1/lmr/m/n/10.95 scripts
  []
 
 
@@ -997,6 +997,31 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [20]
+Overfull \hbox (3.807pt too wide) in paragraph at lines 747--749
+[]\T1/lmr/bx/n/10.95 High-D VE-GAS er-ror bars can lie. \T1/lmr/m/n/10.95 VE-GA
+S de-faults (\T1/lmtt/m/n/10.95 NStart=1000, NIncrease=500,
+ []
+
+
+Overfull \hbox (27.2394pt too wide) in paragraph at lines 747--749
+\T1/lmtt/m/n/10.95 NBatch=1000\T1/lmr/m/n/10.95 ) pro-duce con-fi-dently wrong 
+val-ues for sec-tor di-men-sion $\U/msa/m/n/10.95 & \OT1/lmr/m/n/10.95 6$\T1/lm
+r/m/n/10.95 . \T1/lmtt/m/n/10.95 resolveVegasSizing
+ []
+
+
+Overfull \hbox (4.03336pt too wide) in paragraph at lines 753--755
+[]\T1/lmr/bx/n/10.95 Kinematic-symbol co-ef-fi-cients can-not be auto-lifted. \
+T1/lmtt/m/n/10.95 DetectExtremeCoefficients
+ []
+
+
+Underfull \hbox (badness 1270) in paragraph at lines 765--767
+[]\T1/lmr/bx/n/10.95 FIESTA cross-checks re-quire FI-ESTA and path ed-its. \T1/
+lmr/m/n/10.95 The \T1/lmtt/m/n/10.95 CC/ \T1/lmr/m/n/10.95 scripts
+ []
+
+
 
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
@@ -1015,13 +1040,31 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [22]
-Overfull \hbox (304.47583pt too wide) in paragraph at lines 939--940
+
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 13.59999pt, for example:
+(fancyhdr)                \setlength{\headheight}{13.59999pt}.
+(fancyhdr)                You might also make \topmargin smaller:
+(fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
+
+[23]
+
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 13.59999pt, for example:
+(fancyhdr)                \setlength{\headheight}{13.59999pt}.
+(fancyhdr)                You might also make \topmargin smaller:
+(fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
+
+[24]
+Overfull \hbox (304.47583pt too wide) in paragraph at lines 988--989
 []\T1/lmr/m/n/10.95 Known-limitation en-force-ment: \T1/lmtt/m/n/10.95 nested/n
 estedIBP/nocuba/badcpp/liftnopivot/liftcomplex/liftdegenerate/vegasbudget
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 942--943
+Underfull \hbox (badness 10000) in paragraph at lines 991--992
 []\T1/lmr/m/n/10.95 Divergence $\OMS/lmsy/m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 com-
 plex ex-po-nents, full ma-trix: $\OMS/lmsy/m/n/10.95 f$\T1/lmr/m/n/10.95 IBP,
  []
@@ -1035,13 +1078,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[23]
-Underfull \hbox (badness 1331) in paragraph at lines 991--992
-[]\T1/lmr/m/n/10.95 C++17 re-quired (\T1/lmtt/m/n/10.95 -std=c++17\T1/lmr/m/n/1
-0.95 ). OpenMP rec-om-mended
- []
-
-
+[25]
 
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
@@ -1050,8 +1087,23 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[24]
-Underfull \hbox (badness 2538) in paragraph at lines 993--994
+[26]
+
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 13.59999pt, for example:
+(fancyhdr)                \setlength{\headheight}{13.59999pt}.
+(fancyhdr)                You might also make \topmargin smaller:
+(fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
+
+[27]
+Underfull \hbox (badness 1331) in paragraph at lines 1043--1044
+[]\T1/lmr/m/n/10.95 C++17 re-quired (\T1/lmtt/m/n/10.95 -std=c++17\T1/lmr/m/n/1
+0.95 ). OpenMP rec-om-mended
+ []
+
+
+Underfull \hbox (badness 2538) in paragraph at lines 1045--1046
 []\T1/lmr/m/n/10.95 ([][]$\T1/lmtt/m/n/10.95 https : / / feynarts . de / cuba/$
 [][]\T1/lmr/m/n/10.95 ) Re-quired only for \T1/lmtt/m/n/10.95 "Integrator" ->
  []
@@ -1070,22 +1122,31 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                You might also make \topmargin smaller:
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
-[25] (./manual.aux)
+[28]
+
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 13.59999pt, for example:
+(fancyhdr)                \setlength{\headheight}{13.59999pt}.
+(fancyhdr)                You might also make \topmargin smaller:
+(fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
+
+[29] (./manual.aux)
  ***********
 LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
 Package rerunfilecheck Info: File `manual.out' has not changed.
-(rerunfilecheck)             Checksum: 540957CF09E7F11B8B1CA649149D5235;13300.
+(rerunfilecheck)             Checksum: 1361847A72B3ED5CCD52569F6ACBE7B5;13840.
  ) 
 Here is how much of TeX's memory you used:
- 21931 strings out of 473190
- 363824 string characters out of 5715801
- 2197724 words of memory out of 5000000
- 44649 multiletter control sequences out of 15000+600000
+ 21973 strings out of 473190
+ 364426 string characters out of 5715801
+ 2200649 words of memory out of 5000000
+ 44661 multiletter control sequences out of 15000+600000
  649954 words of font info for 101 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,13n,79p,714b,8733s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,13n,79p,1316b,8733s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmbx10.pfb></usr/lo
 cal/texlive/2025/texmf-dist/fonts/type1/public/lm/lmbx12.pfb></usr/local/texliv
 e/2025/texmf-dist/fonts/type1/public/lm/lmbxi10.pfb></usr/local/texlive/2025/te
@@ -1106,10 +1167,10 @@ st/fonts/type1/public/lm/lmtk10.pfb></usr/local/texlive/2025/texmf-dist/fonts/t
 ype1/public/lm/lmtt10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publi
 c/amsfonts/symbols/msam10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/p
 ublic/amsfonts/symbols/msbm10.pfb>
-Output written on manual.pdf (25 pages, 513776 bytes).
+Output written on manual.pdf (29 pages, 527520 bytes).
 PDF statistics:
- 863 PDF objects out of 1000 (max. 8388607)
- 773 compressed objects within 8 object streams
- 312 named destinations out of 1000 (max. 500000)
- 462 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 927 PDF objects out of 1000 (max. 8388607)
+ 832 compressed objects within 9 object streams
+ 342 named destinations out of 1000 (max. 500000)
+ 478 words of extra memory for PDF output out of 10000 (max. 10000000)
 

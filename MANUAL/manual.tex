@@ -183,7 +183,7 @@ Both methods are kept; IBP is the default (\texttt{Method\,-> Automatic} $\Right
 \begin{description}[style=nextline]
   \item[Source:] Module 1b---\texttt{DetectExtremeCoefficients}, \texttt{LiftCoefficients}, \texttt{ProcessSectorLifted}
   \item[When:] Polynomial coefficient $|C| \gg 1$ or $|C| \ll 1$ inflates MC variance
-  \item[Mutually exclusive with divergence:] a sector is plain-convergent, divergent, or lifted---not divergent+lifted.
+  \item[Composes with divergence (Case A):] a lifted sector may \emph{also} carry a single $1/\varepsilon$ pole. After the lifting $\delta$-resolution collapses the auxiliary dimension, a lifted sector is structurally an ordinary $n$-dimensional \texttt{SectorData} whose pole lives in one of the surviving effective exponents $\tilde a_j$---the object Stage~3a already consumes. \texttt{ProcessSectorLifted} is $\varepsilon$-aware and routes through the divergence machinery (Section~\ref{sec:liftdiv}). Refused cases: the divergent variable coupling to the lifted domain face (Case~B), \texttt{SplitRealImag}$\times$lift$\times$divergence, and complex-$B$ lifting.
 \end{description}
 
 \subsection{Stage 4: C++ Code Generation and Execution}
@@ -330,6 +330,18 @@ compiled into the C++ integrand (returns 0 outside the feasible region).
 \subsubsection{\texttt{HasConstantTerm = False}: the L5 Caveat}
 
 When the re-cleared polynomial $\tilde{Q}$ lacks a constant term, the lifted integrand may not be in $L^2$ on $[0,1]^n$. The sample-based standard error understates the true error; the MC estimate can significantly deviate from the true value. Always cross-check against an independent reference (NIntegrate, CUBA Cuhre) rather than trusting the MC error bar for \texttt{HasConstantTerm=False} sectors.
+
+\subsubsection{Lifting a Divergent Integral (Case A)}\label{sec:liftdiv}
+
+Lifting and a simple $1/\varepsilon$ pole compose. The two features act on different objects: lifting acts on a polynomial \emph{coefficient} (a $+1$-dimensional $\delta$-constraint), while divergence acts on a monomial \emph{exponent} $a_k(\varepsilon)\to 0$ (a $1/\varepsilon$ endpoint pole). After the $\delta$-resolution collapses the auxiliary dimension, the pole---if any---necessarily sits in one of the $n$ post-$\delta$ effective exponents $\tilde a_j$, exactly the object the IBP/subtraction machinery consumes.
+
+\paragraph{$\varepsilon$-aware classification.} \texttt{ProcessSectorLifted[\ldots,\,"Eps"->eps]} classifies each $\tilde a_j$ at $\varepsilon\to 0$ \emph{exactly} (\texttt{PossibleZeroQ[Im]} and \texttt{Re[\ldots]>0}, never a tolerance): \texttt{"complex"} ($\to$\,\texttt{liftcomplex}), \texttt{"convergent"} ($\mathrm{Re}>0$), or \texttt{"divergent"} ($\mathrm{Re}\leq 0$, regulator present). A pivot is admissible iff no direction is complex and \emph{at most one} is divergent (with $c_k=\partial_\varepsilon\tilde a_k|_0\neq 0$). With \texttt{"Eps"->None} the classification reduces exactly to the pre-$\varepsilon$ realness test, so convergent lifting is byte-identical.
+
+\paragraph{Prefactor $\varepsilon$-dependence.} A divergent lifted \texttt{SectorData} carries \texttt{"PrefactorBase"} $=(|\det M|/|m_p|)\,z_0^{a_p/m_p-1}$, which itself carries $\varepsilon$ through $a_p(\varepsilon)$. The divergence routines use \texttt{PrefactorBase}$|_{\varepsilon=0}$ in the integrand and the IBP Laurent assembly adds the missing finite term $(\partial_\varepsilon\log\text{PrefactorBase})|_0\cdot(\text{pole})$, stored as \texttt{"DLogPrefactor"} ($=0$ for unlifted sectors).
+
+\paragraph{Case A vs Case B.} The lifted domain indicator has coefficients $\mathrm{ic}_j=m_{\text{other},j}/\tilde a_j$. \emph{Case A} (supported): the divergent slot decouples ($\texttt{DomainConstraint}\,\texttt{===}\,\texttt{None}$ or $\mathrm{ic}_k=0$, i.e.\ $m_{\text{other},k}=0$); the indicator commutes with the $y_k$ IBP/subtraction and rides along on the other coordinates. \emph{Case B} (refused, \texttt{liftdivdomain}): $\mathrm{ic}_k\neq 0$ for \emph{every} admissible pivot. The pivot ranking adds a \emph{Case-A-first} key so a decoupled pivot wins whenever one exists; Case B is refused only when none does (rare---no trigger found across a diverse $n=2,3,4$ battery).
+
+\paragraph{Two routes.} Both Stage-3a routes resolve the lifted Laurent (cross-checks 41-C and 45, $n=2,3,4$, non-trivial polynomials). \texttt{LaurentFromSubtraction} (pin $\varepsilon$, sum the full decomposition, fit) is the \emph{robust universal} route---it does not rely on per-sector pole classification, so it is correct even when non-trivial polynomials produce \texttt{HasConstantTerm=False} sectors. The per-sector \texttt{Method->"IBP"} route is exact only when every sector is \texttt{HasConstantTerm}-clean; otherwise a convergent sector can carry a polynomial-zero pole ($\tilde Q_j\to 0$, $B_j<0$) that the $\tilde a$-classification misses and the IBP pole undercounts (a pre-existing sector-decomposition limitation, not specific to lifting). Use the Subtraction route there.
 
 \subsection{Complex Exponents in Codegen}\label{sec:complexcodegen}
 
@@ -518,7 +530,7 @@ Thin wrappers for API continuity:
 \textbf{Option} & \textbf{Default} & \textbf{Description} \\
 \midrule
 \texttt{"Method"} & \texttt{Automatic} & \texttt{"None"|\,"IBP"|\,"Subtraction"}; Auto $\Rightarrow$ IBP if divergent \\
-\texttt{"LiftData"} & \texttt{None} & Association from \texttt{LiftCoefficients[]} or \texttt{None}; advanced/low-level path (typical users call \texttt{EvaluateTropicalMCLifted}); mutually exclusive with divergence \\
+\texttt{"LiftData"} & \texttt{None} & Association from \texttt{LiftCoefficients[]} or \texttt{None}; advanced/low-level path (typical users call \texttt{EvaluateTropicalMCLifted}); may be combined with \texttt{Method->"IBP"/"Subtraction"} for a lifted$+$divergent sector (Case~A, Section~\ref{sec:liftdiv}) \\
 \texttt{"Integrator"} & \texttt{"MC"} & \texttt{"MC"} or \texttt{"VEGAS"} \\
 \texttt{"EpsilonValue"} & \texttt{None} & Substitute $\varepsilon\to\text{value}$ (all sectors become convergent) \\
 \texttt{"ComplexExponentMode"} & \texttt{Automatic} & \texttt{"Direct"} or \texttt{"SplitRealImag"} (see Section~\ref{sec:complexcodegen}) \\
@@ -600,6 +612,7 @@ The thin lifting wrapper: it detects/applies lifting (calling \texttt{DetectExtr
 \texttt{"ClearedPolys"} & After tropical factoring; all exponents $\geq 0$. \\
 \texttt{"FlattenedPolys"} & After flattening; exponents $e_{m,i}/a_{\mathrm{eff},i}$. \\
 \texttt{"Prefactor"} & $|\det(M)|/\prod_i a_{\mathrm{eff},i}$. \\
+\texttt{"PrefactorBase"} & \textbf{[v3 new]} Sector prefactor \emph{before} dividing by $\prod_i a_{\mathrm{eff},i}$: $|\det(M)|$ unlifted, $(|\det M|/|m_p|)z_0^{a_p/m_p-1}$ lifted. The divergence routines reconstruct prefactors from this (Section~\ref{sec:liftdiv}); unlifted output is byte-identical. \\
 \texttt{"IsDivergent"} & \texttt{True/False}. \\
 \texttt{"DivergentVariable"} & Index $k$ (1-based) or 0 if convergent. \\
 \texttt{"Dimension"} & $n$. \\
@@ -609,7 +622,7 @@ The thin lifting wrapper: it detects/applies lifting (calling \texttt{DetectExtr
 \end{tabular}
 \end{center}
 
-For a divergent sector (\texttt{IsDivergent -> True}) the association contains the pre-flattening data only (no \texttt{FlattenedPolys}; \texttt{Prefactor} holds just $|\det(M)|$). The lifted path consumes this pre-flattened form before its own delta resolution.
+For a divergent sector (\texttt{IsDivergent -> True}) the association contains the pre-flattening data only (no \texttt{FlattenedPolys}; \texttt{Prefactor} and \texttt{PrefactorBase} both hold $|\det(M)|$). The lifted path consumes this pre-flattened form before its own delta resolution. A \emph{divergent lifted} sector (Section~\ref{sec:liftdiv}) likewise has \texttt{IsDivergent->True} with \texttt{NewExponents} the $\varepsilon$-carrying $\tilde a$, \texttt{DivergentVariable} the surviving slot $k$, \texttt{PrefactorBase} the lifted base, and a Case-A \texttt{DomainConstraint} (its $\mathrm{ic}_k=0$).
 
 \subsection{Lifted \texttt{SectorData} extensions (from \texttt{ProcessSectorLifted})}
 \begin{center}
@@ -677,6 +690,8 @@ For a divergent sector (\texttt{IsDivergent -> True}) the association contains t
 \texttt{"IBPTerms"} & List of term associations, each with: \texttt{"FlatPolys","Prefactor","Dimension"\,(n),"PolyExponents","Coeff0","Coeff1","LogInsertions","Alpha0","Alpha1"}. \\
 \texttt{"NTerms"} & Total number of IBP terms. \\
 \texttt{"IBPPrefactors"} & $\{-1/a_{k_1},-1/a_{k_2},\ldots\}$. \\
+\texttt{"DomainConstraint"} & \textbf{[v3 new]} Lifted-sector domain indicator (\texttt{None} for unlifted); threaded into the boundary/term codegen (Section~\ref{sec:liftdiv}). \\
+\texttt{"DLogPrefactor"} & \textbf{[v3 new]} $\partial_\varepsilon\log(\text{PrefactorBase})|_0$; the driver adds its product with the pole to the finite part ($0$ for unlifted). \\
 \texttt{"AnalyticPole"} & $1/c_k$ (symbolic). \\
 \bottomrule
 \end{tabular}
@@ -702,7 +717,9 @@ For a divergent sector (\texttt{IsDivergent -> True}) the association contains t
 \texttt{liftidentity} & \texttt{LiftCoefficients} & Round-trip check failed ($z\to z_0$ did not recover original). \\
 \texttt{liftnopivot} & \texttt{ProcessSectorLifted} & No admissible pivot (lists per-pivot $\tilde{a}$). \\
 \texttt{liftcomplex} & \texttt{ProcessSectorLifted} & Pivot produces complex $\tilde{a}$; lifting requires real $B_k$. \\
-\texttt{liftdivergent} & \texttt{ProcessSectorLifted} & Selected pivot leaves some $\mathrm{Re}(\tilde{a}_j)\leq 0$. \\
+\texttt{liftdivergent} & \texttt{ProcessSectorLifted} & (Convergent-lift backstop) selected pivot leaves $\mathrm{Re}(\tilde{a}_j)\leq 0$ with no regulator. \\
+\texttt{liftdivdomain} & \texttt{ProcessSectorLifted} & \textbf{[v3 new]} Case~B: the divergent variable couples to the lifted domain face ($\mathrm{ic}_k\neq 0$) for every admissible pivot; refused (log-space remap is future work). \\
+\texttt{splitliftdiv} & driver & \textbf{[v3 new]} \texttt{SplitRealImag} combined with lifting \emph{and} divergence; use \texttt{ComplexExponentMode->"Direct"}. \\
 \texttt{liftfandim} & driver & Fan in lifted mode is not $(n{+}1)$-dimensional. \\
 \texttt{liftdegenerate} & \texttt{EvaluateTropicalMCLifted} & Lifted Newton polytope is lower-dimensional; supply explicit \texttt{"FanData"}. \\
 \bottomrule
@@ -718,8 +735,8 @@ For a divergent sector (\texttt{IsDivergent -> True}) the association contains t
 \item \textbf{Single divergent variable per sector.}
 Both divergence handlers (tropical subtraction and IBP) resolve a \emph{single} divergent variable per sector. Sectors with $>1$ divergent variable are detected and refused (\texttt{\$Failed}, \texttt{TropicalEval::nested\,/\,::nestedIBP}). The symbolic reduction \texttt{IBPReduceSector} does iterate over several divergent variables, but the numerical boundary construction and multi-order Laurent assembly for $d\geq 2$ are not yet implemented. The full integral at a fixed, nonzero $\varepsilon$ remains available via \texttt{"EpsilonValue"}. Enforced by \texttt{EXAMPLES/test\_nested\_divergence.wl}.
 
-\item \textbf{Lifting and divergence are mutually exclusive.}
-A sector is plain-convergent, divergent, or lifted---not divergent+lifted. The two use different fans ($n$-dim vs $(n{+}1)$-dim). Combining them is documented future work.
+\item \textbf{Lifting $+$ a simple $1/\varepsilon$ pole: supported (Case A); coupled cases refused.}
+A lifted sector may also carry a single $1/\varepsilon$ pole (Section~\ref{sec:liftdiv}): after the $\delta$-resolution the pole sits in a surviving effective exponent $\tilde a_k$, which the IBP/subtraction machinery consumes; the sector carries a \texttt{PrefactorBase} and a \texttt{DomainConstraint}, and both the \texttt{LaurentFromSubtraction} (robust/universal) and \texttt{Method->"IBP"} routes resolve it (verified across $n=2,3,4$ on non-trivial polynomials, cross-checks 41-C and 45). The single-pole-per-sector limit (item~1) still applies. Refused with a clean \texttt{\$Failed} (never a wrong number): (i)~\textbf{Case B}---the divergent variable couples to the lifted domain face ($\mathrm{ic}_k\neq 0$) for every admissible pivot (\texttt{liftdivdomain}; the Case-A-first pivot ranking makes this rare); (ii)~\texttt{SplitRealImag}$\times$lift$\times$divergence (\texttt{splitliftdiv}; use \texttt{Direct}); (iii)~complex polynomial exponents $B$ with lifting (inherits the \texttt{liftcomplex} limitation---a complex $\tilde a$ has no real domain indicator). When non-trivial polynomials produce \texttt{HasConstantTerm=False} sectors the per-sector IBP pole undercounts (item~3 mechanism); the Subtraction route is robust there and is the recommended route.
 
 \item \textbf{\texttt{HasConstantTerm = False} $\Rightarrow$ possible infinite MC variance (L5 caveat).}
 When the re-cleared polynomial $\tilde{Q}$ after delta-elimination lacks a constant term, the true variance of the lifted integrand may be infinite. The sample-based standard error \emph{understates} the true error; the MC estimate can significantly deviate from the true value. Variance comparison between lifted and unlifted is unreliable for such sectors. \emph{Always} cross-check against an independent reference (NIntegrate, CUBA Cuhre) and never accept a sample error bar from a \texttt{HasConstantTerm=False} sector without corroboration. This situation arises structurally for certain degenerate lifted polytopes (e.g.\ Test~23C, polynomial with extreme geometry).
@@ -911,11 +928,43 @@ results = EvaluateTropicalMCLifted[spec, {},
 
 The HasConstantTerm field is reported per sector; check for False sectors and cross-validate against CUBA Cuhre if any are present.
 
+\subsection{Lifting a Divergent Integral (Case A)}\label{ex:liftdiv}
+
+An integrand that needs lifting (an extreme coefficient) \emph{and} has a $1/\varepsilon$ pole. The denominator carries $10^6 x_1^2$ (triggers lifting) and the monomial $x_1^{-1+\varepsilon}$ gives a simple pole at $x_1\to 0$. The pole is $\int_0^\infty(1+x_2^2)^{-2}dx_2=\pi/4$.
+
+\begin{lstlisting}[language=Mathematica]
+spec = <|
+  "Polynomials"        -> {1 + x[1]*x[2] + 10^6*x[1]^2 + x[2]^2},
+  "MonomialExponents"  -> {-1 + eps, 0},     (* x1^{-1+eps}: the pole *)
+  "PolynomialExponents"-> {-2},
+  "Variables"          -> {x[1], x[2]},
+  "KinematicSymbols"   -> {},
+  "RegulatorSymbol"    -> eps
+|>;
+liftRules = {<|"PolyIndex" -> 1, "ExponentVector" -> {2, 0}, "k" -> 3|>}; (* z0=100 *)
+
+(* IBP route: pole + finite directly *)
+ibp = EvaluateTropicalMCLifted[spec, {{}}, "LiftRules" -> liftRules,
+        "Method" -> "IBP", "NSamples" -> 5*^5];
+(* ibp["Results"][[1]]: PoleCoefficient ~ pi/4, FinitePart *)
+
+(* Subtraction route (robust/universal): build the lifted spec + fan, fit Laurent *)
+lift = LiftCoefficients[spec, liftRules];
+fan  = computeFanScaled[PolytopeVertices[
+         (Times @@ lift["LiftedSpec"]["Polynomials"])^(-1),
+         lift["LiftedSpec"]["Variables"]]];
+sub  = LaurentFromSubtraction[lift["LiftedSpec"], fan, {{}},
+         "LiftData" -> lift["LiftData"], "EpsilonValues" -> {0.01, 0.02, 0.04}];
+(* sub["Results"][[1]]: Pole ~ pi/4, Finite; agrees with the IBP route *)
+\end{lstlisting}
+
+Both routes give \texttt{pole}~$\approx\pi/4$ and agreeing finite parts, and reproduce \texttt{NIntegrate} of the original at small $\varepsilon$ to $<0.3\%$ (cross-check 41-C). For non-trivial polynomials that produce \texttt{HasConstantTerm=False} sectors, prefer the Subtraction route (it sums the full decomposition and is robust; cross-check 45 covers $n=2,3,4$). See Section~\ref{sec:liftdiv}.
+
 %=============================================================================
 \section{Validation and Testing}
 %=============================================================================
 
-\subsection{V3 Cross-Check Suite (TEST/, 43 named checks)}
+\subsection{V3 Cross-Check Suite (TEST/, 45 named checks)}
 
 The suite is organized by plan.md~\S8. Key checks:
 
@@ -942,7 +991,10 @@ The suite is organized by plan.md~\S8. Key checks:
 33 & Divergence $\times$ complex exponents, full matrix: $\{$IBP, subtraction$\}\times\{$MC, VEGAS$\}$. \\
 34 & Lifting $\times$ complex coefficient $\times$ VEGAS, high-D ($\approx$8D); gates BUG~1 + L1/L2/L3. \\
 40 & Lift identity (symbolic): $z\to z_0$ recovers original, exact, for $+$, $-$, complex, multi-rule. \\
-43 & Exactness guard: \texttt{FreeQ[symbolicOutput, \_Real]} before the \texttt{MmaToC} boundary. \\
+41 & Numerator ($B>0$) $\times$\,\{divergence, lifting, \textbf{lifting$\times$divergence}\}. 41-C: lifted $+$ $1/\varepsilon$ pole; IBP and Subtraction poles/finites agree and reproduce \texttt{NIntegrate}; pole $=\pi/4$. \\
+43 & Exactness guard: \texttt{FreeQ[symbolicOutput, \_Real]} before the \texttt{MmaToC} boundary. Sub-case D: lifted$+$divergent exact input ($\tilde a$, \texttt{PrefactorBase}, IBP boundary/terms, \texttt{DLogPrefactor}). \\
+44 & \textbf{Case-B refusal} + safety invariant: every \emph{emitted} divergent lifted sector is decoupled (Case~A); \texttt{liftdivdomain} is the wired clean \texttt{\$Failed} for the coupled case. \\
+45 & \textbf{Lift $\times$ divergence battery}, $n=2,3,4$, non-trivial polynomials (cross terms, numerators, multiple polynomials): Subtraction route reconstructs \texttt{NIntegrate} to $<0.3\%$; IBP agrees on \texttt{HasConstantTerm}-clean cases. \\
 \bottomrule
 \end{tabular}
 \end{center}
