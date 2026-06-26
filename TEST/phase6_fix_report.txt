@@ -1,0 +1,353 @@
+=======================================================================
+TROPICAL_MONTE_CARLOv3 — PHASE 6 RE-RUN (engine-fix stage) — FULL REPORT
+Branch: v3-build      Date: 2026-06-26
+=======================================================================
+A prior Phase-6 RED found four real defects (A,B,C,D).  All four are now
+fixed and independently verified; no prior-phase gate regressed and the 9
+codegen goldens stay byte-identical.
+
+Files changed (engine):
+  tropical_eval.wl     (+1873 / -4 lines)
+Files changed (tests/harness):
+  TEST/cc_43.wl        (GAP #43: correct field + genuinely-divergent spec)
+  TEST/cc_32.wl        (#32: accept v3's correct numeric Laurent for T3v2-A)
+  TEST/cc_31.wl        (pre-existing harness bugs A4/B3 corrected — engine OK)
+
+=======================================================================
+(A) REAL BUG #34 — computeFanScaled $Failed on lifted COMPLEX 8D vertices
+=======================================================================
+ROOT CAUSE (found by reproduction, scratchpad/probe34.wl):
+  LiftCoefficients[spec, liftRules] read the aux-variable power as r["k"].
+  But DetectExtremeCoefficients ships its rules with key "SuggestedK", and
+  EvaluateTropicalMCLifted only remaps SuggestedK->k internally — when a
+  detector rule is passed straight to LiftCoefficients (as cc_34 and the
+  general public API do), r["k"] resolved to Missing[KeyAbsent, k].
+  This poisoned the lifted monomial:
+     ((1/1000000 + I/1000000) x[1]^2 x[9]^Missing[KeyAbsent,k]) / z0^Missing...
+  so the lifted Newton-polytope vertex became
+     {2,0,0,0,0,0,0,0, Missing[KeyAbsent,k]}
+  and ComputeDecomposition/computeFanScaled wrote "$Failed" into the
+  Polymake INEQUALITIES input -> $Failed.
+
+FIX (tropical_eval.wl, LiftCoefficients, ~line 835):
+  - Added a local resolver  ruleK[r] := Lookup[r,"k", Lookup[r,"SuggestedK", Missing["NoK"]]]
+    used at all three k-reads (primary z0 exponent, residual c_i = C_i/z0^k_i,
+    and the lifted-monomial aux power auxVar^k_i).
+  - Added an up-front guard: every rule must resolve to a positive INTEGER
+    aux power (the lift identity needs an integer); otherwise fire
+    TropicalEval::liftbadvar and return $Failed cleanly (no Missing[] leaks
+    into a vertex).
+  - liftData["Rules"] still stores the original liftRules unchanged, so any
+    downstream reader of LiftData is unaffected.
+
+VERIFICATION:
+  scratchpad/probe34.wl (post-fix): lifted poly = ((1+I) x[1]^2 x[9]^2)/Sqrt[2],
+     z0 = 1/(500 2^(3/4)) (EXACT), vertex {2,0,..,0,2} (no Missing),
+     computeFanScaled -> 10 sectors.
+  cc_34.wl: ALL 5 sub-checks PASS
+     A K-scaled fan builds: 10 sectors
+     B SplitRealImag VEGAS Re=0.00316713 +/- 1.33e-6 ; relerr vs oracle 1.17e-3 (<5e-3)
+     C Direct       VEGAS Re=0.00316713 ; relerr vs oracle 1.17e-3 (<5e-3)
+     D |Direct - Split| = 0.0  (identical) < tol 1.85e-5
+     E vegasbudget fires for NSamples=1000 < 20*NStart=1000
+  INDEPENDENT CUBA/Schwinger oracle cross-check (scratchpad/oracle34.wl):
+     exact c=0 Gamma reduction = 0.0031708688487631...
+     full complex Schwinger+NI = 0.0031708562 (Re), Im ~ -1.26e-8
+     published cc_34 oracle    = 0.00317086  (agree to ~1e-6)
+  phase5_8d.wl: lifted fan 10 cones; Re=0.00316713; relerr 1.17e-3; budget fired.
+  => 8D lifting x complex-coeff x VEGAS: Direct ≡ SplitRealImag ≡ independent
+     oracle to 0.117% (<= 0.5%).  PASS.
+
+=======================================================================
+(B) REAL GAP #43 / IBP-exactness — untested on the divergent/IBP path
+=======================================================================
+(1) CORRECT FIELD NAME (the central question):
+    IBPProcessSector[sectorData, integrandSpec] returns the SYMBOLIC IBP
+    decomposition.  It DOES NOT return a "LaurentCoefficients" key.  Its
+    pole/Laurent-bearing SYMBOLIC fields are:
+        "AnalyticPole"  (= 1/c_k, the symbolic 1/eps prefactor),
+        "ck", "rk"      (eps-expansion coeffs of the divergent exponent),
+        "BoundaryData"  (FlatPolys, Prefactor, PolyExponents, Avals,
+                         LogInsertions — the B^(0)/B^(1) boundary functions),
+        "IBPTerms"      (each: FlatPolys, Prefactor, Coeff0, Coeff1,
+                         PolyExponents, LogInsertions, Alpha0, Alpha1).
+    The "LaurentCoefficients" -> <|-1->pole, 0->finite|> key is produced ONLY
+    by the NUMERIC driver evaluateTropicalIBPDriver / EvaluateTropicalMCIBP
+    (tropical_eval.wl line ~5346 in the original; shifted after the Module-5
+    insertion) — i.e. AFTER the MmaToC numericization boundary, where inexact
+    reals are EXPECTED and the §1.4 exactness invariant no longer applies.
+    cc_43's checkIBPResult wrongly keyed on "LaurentCoefficients" (always
+    missing on IBPProcessSector) -> spurious.
+
+(2) DIVERGENT SPEC THAT ACTUALLY PRODUCES DIVERGENT SECTORS:
+    cc_43 sub-case B used  P=1+x1+x2, MonomialExponents {0,0}, B=-(n+1)+eps.
+    Probe (scratchpad/probe43.wl): that spec yields 0 divergent sectors, so
+    the IBP/Laurent path was NEVER exercised (the gap).  Replaced with a
+    genuine endpoint singularity (mirrors Tree-A Test 14 / cc_31 A3):
+        P = 1 + x1 + x2 + x1 x2, MonomialExponents {2eps-1, 0}, B = -2.
+    Probe (scratchpad/probe43b.wl): 2 divergent sectors, both routed through
+    IBPProcessSector.  Added an explicit assert that >=1 divergent sector
+    exists so the gap cannot silently reopen.
+
+(3) EXACTNESS CONFIRMED:
+    For both divergent sectors, IBPProcessSector output is FreeQ[_, _Real] = True.
+    AnalyticPole = 1/2, ck = 2, rk = 0 (exact rationals); BoundaryData and
+    IBPTerms FlatPolys/Coeff0/Coeff1 all exact.
+  cc_43.wl: ALL 3 sub-cases PASS (A convergent, B divergent+IBP, C meta-test).
+
+=======================================================================
+(C) REAL GAP #31D — v3 had NO RunAllTests[] body (0 DownValues)
+=======================================================================
+PORTED (verbatim logic) from
+   OLD_CODE/TROPICAL_MONTE_CARLO/EXAMPLES/tropical_eval_examples.wl
+into v3 tropical_eval.wl (Module 5, inserted before End[] inside
+TropicalEval`Private):
+   RunAllTests[]  +  RunTest1..RunTest18.
+All 18 tests' called functions (ProcessSector, ProcessDivergentSector,
+ValidateSubtraction, ValidateDecomposition, GenerateCppMonteCarlo, CompileCpp,
+PolytopeVertices, ComputeDecomposition) are the v3 implementations with
+byte-identical signatures to Tree A — no test weakened.
+RunAllTests is the only public symbol; RunTest1..18 are Private helpers.
+
+VERIFICATION (scratchpad/run_rat.wl):
+  RunAllTests[] -> 18 {Test N, True} pairs, 0 failures (ALL PASS),
+  including the divergent IBP tests (8-12,14-18) and C++ codegen (13).
+  cc_31.wl Part D [D-RunAllTests-0fail] subPASS: "RunAllTests: 18 tests, 0 failures."
+  cc_31.wl overall: PASS — all 26 assertions green; v3 reproduces every Tree-A golden.
+
+(C-bonus) cc_31 harness bugs A4/B3 (PRE-EXISTING, engine was correct) fixed:
+  - A4 keyed IBPReduceSector result on "IBPTerms"; the canonical Tree-A key
+    is "Terms"/"NTerms" (OLD_CODE Test 19-21 use "Terms").  The engine
+    correctly returns 2/2/3 terms; cc_31 now reads "Terms".
+  - B3 called ProcessDivergentSector[sd,spec,eps,1] (4 args; only a 2-arg
+    DownValue exists -> returned unevaluated) and keyed on PoleCoefficient/
+    FinitePart (which ProcessDivergentSector does not expose), comparing to
+    the [0,1] closed form finite=-log2/2.  Rewritten to use the proven
+    EvaluateTropicalMC[Method->"IBP"] API and the correct tropical [0,inf)
+    Laurent (pole=1/2, finite=0).  Now subPASS.
+
+=======================================================================
+(D) #32 — T3v2-A: Tree B returned $Failed; v3 returns a NUMERIC result
+=======================================================================
+SPEC (cc_32 T3v2-A):
+   I(eps) = Int_0^inf y^{2eps-1}/(1+y^2) dy
+   {Polynomials {1+x1^2}, MonomialExponents {2eps-1}, PolyExponents {-1},
+    Variables {x1}, RegulatorSymbol eps}.
+
+WHY TREE B REFUSED (OLD_CODE2 .../tropical_eval.wl:311-312):
+   Tree B (TROPICAL_MONTE_CARLOv2) is a CONVERGENT-ONLY engine.  Its guard
+     If[!MatchQ[integrandSpec["RegulatorSymbol"], None | _Missing],
+        Message[TropicalEval::noregulator]; Return[$Failed]]
+   refuses ANY eps-regulated spec by design, deferring divergent/IBP work to
+   the original Tree A package.  (v2 also has ::divergentinput at sector
+   level.)  So $Failed was correct FOR v2's scope, not a statement about the
+   integral.
+
+IS v3's NUMERIC CORRECT?  YES.
+   Exact:  Int_0^inf y^{2eps-1}/(1+y^2) dy = (1/2) B(eps,1-eps) = (pi/2) csc(pi eps).
+   Laurent at eps=0:  1/(2eps) + 0 + (pi^2/12) eps + ...  => pole=1/2, finite=0.
+   v3 (scratchpad/probe32_t3v2a.wl), Method->IBP, 2e6 samples:
+       pole   = 0.500015   (|err| 3.1e-5 vs exact 1/2)
+       finite = -3.85e-5   (~0, exact 0)
+   Independent NIntegrate of the full [0,inf) integrand at eps=0.05:
+       10.0412420395  vs exact (pi/2)csc(0.05 pi) = 10.0412420395  (7+ digits).
+   v3 EvaluateTropicalMC (cc_32 call) returns
+       PoleCoefficient=0.50203, FinitePart=-0.04006 at NSamples=100 (noisy but
+       consistent; the IBP 2e6-sample run pins pole=0.50002, finite~0).
+
+VERDICT: LEGITIMATE CAPABILITY GAIN, NOT A REGRESSION.
+   v3 merged Tree-A's IBP/Laurent machinery with Tree-B's convergent path, so
+   the unified driver CAN evaluate this eps-regulated divergent integral and
+   does so correctly.
+
+ACTION TAKEN (per instruction "if correct -> leave behavior + document so
+cc_32 can ACCEPT the numeric"):
+   - Engine behavior LEFT AS-IS (v3 correctly returns the numeric Laurent).
+   - cc_32 T3v2-A REWRITTEN to ACCEPT v3's numeric and CROSS-CHECK it vs the
+     exact oracle (pole=1/2, finite=0; |err|<5e-3), instead of asserting $Failed.
+   - cc_32 docstring updated; T3v2-B kept (it is a genuinely divergent,
+     regulator-FREE integral that truly diverges -> v3 STILL returns $Failed,
+     correctly, via its own badck/nested guards; verified scratchpad/probe32_t3v2b.wl).
+  cc_32.wl: ALL sub-tests PASS (T1,T2,T3v2-A,T3v2-B,T5,T6,T7,T23A,T23C,T23D).
+
+=======================================================================
+NO-REGRESSION VERIFICATION
+=======================================================================
+  9 codegen goldens (scratchpad/verify_goldens.wl, NON-destructive):
+     ALL 9 BYTE-IDENTICAL  (conv/subdiv/ibpdiv x mc/vegas_perkp/vegas_batch).
+  phase2_selfgate.wl : ALL PASS (NEW-vocab codegen == goldens; exactness;
+                       FlattenSector classification).  Exit 0.
+  phase3_selfgate.wl : ALL PASS (lifted exactness; round-trip identity #40 for
+                       +,-,multi-rule; BUG-2 liftbadvar; ValidateLifted Toy-0/1;
+                       liftcomplex/liftnopivot; domain-indicator C++).  Exit 0.
+  phase5_exact.wl    : ALL PASS (per-sector exact substitution; FreeQ[_Real];
+                       computeFanScaled K=1 byte-identical to ComputeDecomposition).
+  phase5_guard.wl    : PASS (vegasbudget thresholds unchanged).
+  phase5_lowd.wl     : PASS (VEGAS relerr 3.9e-5; sizing historical-unchanged).
+  phase5_8d.wl       : PASS (lifted fan 10 cones; Re=0.00316713; relerr 1.17e-3;
+                       vegasbudget fired).
+  Package clean-load : RunAllTests DV=1, LiftCoefficients DV=1, OK.
+  tropical_fan.wl    : UNCHANGED (additive-only invariant honored; the BUG #34
+                       fix was entirely in tropical_eval.wl LiftCoefficients).
+
+=======================================================================
+(E) REAL ENGINE BUG #27 (§5.8) — the badcpp guard was INEFFECTIVE  [THIS RUN]
+=======================================================================
+ROOT CAUSE (confirmed by probe, scratchpad/probe_cform.wl):
+  cppBadTokens (tropical_eval.wl, was ~line 3235) scanned the generated C++
+  for BRACKET-form head tokens:
+     {"DirectedInfinity","ComplexInfinity","Indeterminate",
+      "Sin[","Cos[","Sqrt[","Plus[","Times[","Power[","Rule[","List["}
+  But codegen emits unconverted heads via CForm — mmaToCInternal's terminal
+  fallback is  ToString[CForm[expr]] — and CForm formats a head in PAREN form,
+  never bracket form:
+     CForm[Sin[x[1]]]    -> "Sin(x(1))"
+     CForm[BesselJ[0,x]] -> "BesselJ(0,x(1))"
+     CForm[Power[a,b]]   -> "Power(a,b)"
+  So NONE of the "Sin[" / "Cos[" / ... bracket tokens ever matched the actual
+  output.  The badcpp scan silently returned {} on broken code, and
+  GenerateCppMonteCarlo / GenerateCppMonteCarloIBP Exported uncompilable C++
+  (an unsupported head) instead of returning $Failed.  (Two further latent
+  defects: "ComplexInfinity" as a literal NEVER appears either — CForm renders
+  ComplexInfinity AS "DirectedInfinity()"; and "Plus["/"Times[" were dead
+  since MmaToC has explicit infix DownValues for Plus/Times that never reach
+  the fallback.)
+
+FIX (tropical_eval.wl, cppBadTokens + new cppBadHeads, ~line 3231):
+  - Symbolic infinities/indeterminate: scan literal substrings
+    "DirectedInfinity" (also covers ComplexInfinity, which prints thus) and
+    "Indeterminate".
+  - Unconverted heads: match the ACTUALLY-EMITTED PAREN form  Head(  with a
+    leading word boundary  (?<![A-Za-z0-9_])  and the "(" regex-escaped, over
+    an EXPLICIT deny-list cppBadHeads (74 heads: trig/hyperbolic + inverses,
+    Sqrt/Power/Surd, Gamma/PolyGamma/Beta, Zeta/PolyLog/Lerch, Bessel/Airy,
+    Erf/Erfc/Erfi/Fresnel, elliptic, hypergeometric/MeijerG, exp/log integrals,
+    Sign/Floor/Ceiling/Mod/Max/Min/Piecewise, and the structural Rule/List/
+    Rational/Complex).
+  - DELIBERATELY EXPLICIT (not a blanket "any Uppercase(" scan): a blanket
+    scan false-positives on the GENERATED C++ identifiers the goldens contain —
+    P0(, Pfull0(, Psimp0( (polynomial evaluators) and the CUBA Vegas( entry
+    point (verified: a blanket [A-Z][A-Za-z0-9]*\( regex matches exactly those
+    four in the 9 goldens).  Supported heads are always emitted lowercase/
+    std::-qualified (std::sin, std::sqrt, std::pow, std::log, std::exp,
+    std::abs), so a capitalized "Head(" from the deny-list can only be CForm
+    leakage — the guard fires there and nowhere else.
+  - Both codegen entry points (GenerateCppMonteCarlo @ ~3303,
+    GenerateCppMonteCarloIBP @ ~5064) call the same cppBadTokens, so one edit
+    fixes both paths.
+
+ALSO (test consistency): TEST/cc_27.wl (D) belt-and-suspenders token check
+  updated from bracket form "Sin[" to the emitted paren form "Sin(" (and
+  dropped the never-emitted "ComplexInfinity" literal in favor of
+  "DirectedInfinity").  The primary (D) assertion (rCpp === $Failed) was
+  already correct; this only aligns the secondary file-content check.
+
+VERIFICATION (scratchpad/verify_E.wl + cc_27.wl):
+  (1) All 9 codegen goldens: cppBadTokens -> {} (guard does NOT fire on good
+      output).  [also: phase2_selfgate + independent verify_goldens.wl both
+      report ALL 9 BYTE-IDENTICAL.]
+  (2) Poison FIRES: "Sin(x(1))" -> {Sin(}; "DirectedInfinity()" ->
+      {DirectedInfinity}; "Indeterminate" -> {Indeterminate};
+      "BesselJ(0,x(1))" -> {BesselJ(}.
+  (3) Good C++ substrings do NOT fire: std::sin/pow/sqrt -> {};
+      P0(/Pfull0(/Psimp0( -> {}; Vegas( -> {}; std::exp/log/abs -> {}.
+  (4) END-TO-END: the cc_27 (D) scenario (inject Sin[x[1]] as a FlattenedPolys
+      coefficient) now makes GenerateCppMonteCarlo fire TropicalEval::badcpp
+      (offending token {Sin(}) and RETURN $Failed; no .cpp is written.
+  (5) NORMAL integrand still returns a valid Association, writes its .cpp, and
+      has zero bad tokens.
+  cc_27.wl: ALL 8 sub-checks PASS (incl. (D) badcpp), exit 0.
+
+=======================================================================
+NO-REGRESSION (THIS RUN — fix touches only the read-only cppBadTokens scanner)
+=======================================================================
+  Package clean-load: OK.  DownValues intact:
+     RunAllTests=1, LiftCoefficients=1, GenerateCppMonteCarlo=1,
+     cppBadTokens=1; cppBadHeads has 74 entries.
+  9 codegen goldens: ALL 9 BYTE-IDENTICAL (phase2_selfgate + verify_goldens.wl).
+  phase2_selfgate.wl : ALL PASS (exit 0) — goldens, exactness, classification.
+  phase3_selfgate.wl : ALL PASS (exit 0) — lifted exactness, C++ compiles,
+                       liftcomplex/liftnopivot fire, domain indicators.
+  phase5_exact.wl    : EXACT_ALL_PASS=True (per-sector exact subst; FreeQ[_Real];
+                       computeFanScaled K=1 byte-identical to ComputeDecomposition).
+  phase5_guard.wl    : GUARD_PASS=True (vegasbudget thresholds unchanged).
+  cc_27 : PASS (8/8, exit 0)   cc_31 : PASS (28 assertions, RunAllTests 18/18, exit 0)
+  cc_32 : PASS (T3v2-A capability gain pole=0.500015/finite=-3.85e-5; exit 0)
+  cc_43 : PASS (IBP FreeQ[_Real]; exit 0)
+
+  cc_34 : sub-check A (the BUG-34 engine fix) re-confirmed PASS this run
+          (scratchpad/cc34_A_fast.wl): DetectExtremeCoefficients=1 rule,
+          LiftCoefficients OK, 10 polytope verts (ambient 9), FreeQ[_Missing]
+          = True, computeFanScaled -> 10 sectors.  Sub-checks B/C (8D
+          SplitRealImag / Direct VEGAS at NSamples=4e6, under the §6.6
+          vegasbudget threshold 8.1e6 for dim 8) are extremely slow on this
+          machine session — the lifted-VEGAS FanData->Automatic path (polymake
+          fan + 10-sector 8D compile + CUBA Vegas to epsrel 1e-12) did not
+          finish within the run budget and $resB was left unassigned (Abort),
+          so the harness printed rel-err 999 and FAILED B/C as a TIMING/budget
+          artifact, NOT a code regression.
+
+          PROOF the (E) fix is CAUSALLY ISOLATED from cc_34's numeric outcome
+          (scratchpad/equiv_check.wl + equiv_check_old.wl):
+            - The edit changes ONLY cppBadTokens, a read-only scanner invoked
+              at exactly 2 call sites AFTER the C++ string is fully built, solely
+              to choose Return[$Failed] vs Export.  Lifting / fan / sector /
+              codegen-string / compile / VEGAS code is untouched.
+            - On ALL 12 generated cpps (9 goldens + 3 cc_34 artifacts) BOTH the
+              OLD bracket-form cppBadTokens AND the NEW paren-form cppBadTokens
+              return {} -> both take the IDENTICAL Export branch -> identical
+              binary -> identical numeric result.  (OLD: 0/12 non-empty; NEW:
+              0/12 non-empty.)
+            - On the poison "Sin(x(1))+BesselJ(0,x(2))": OLD returns {} (the
+              bug — silent miss), NEW returns {Sin(, BesselJ(} (fires $Failed).
+          Hence cc_34's B/C VEGAS result is bit-identical with and without this
+          change; the prior run verified cc_34 PASS and the (E) edit cannot have
+          altered that.  (RESUME SCOPE: cc_34 was already fixed/verified; its
+          long 8D-VEGAS verification was not to be re-run.)
+
+          ENVIRONMENTAL LOCALIZATION (scratchpad/vegas_smoke.wl): a small 2D
+          VEGAS (NSamples=2e6) on this same machine/session returns cleanly —
+          Re=0.3926994 (= pi/8 to 6 digits), valid Association, exit 0.  So the
+          CUBA/VEGAS toolchain works; only the heavy 8D lifted path (10 sectors
+          x 8D x SplitRealImag x epsrel 1e-12, under the 8.1e6 budget) is too
+          slow to return within the harness's evaluation window this session,
+          which is why $resB is left unassigned (Abort) and B/C read 999.  The
+          linker also warns libcuba.a was built for a newer macOS (26.0) than
+          the link target (13.3) — an environment mismatch, not a code change.
+
+  CONSEQUENCE FOR THE SELF-GATE: items (E) and the fast gates are fully GREEN
+  and directly observed — badcpp fires, normal integrand compiles, 9 codegen
+  goldens byte-identical (phase2 + cc_25 + verify_goldens, three independent
+  confirmations); package loads; phase2/3/5 self-gates PASS; cc_25/cc_27/cc_31/
+  cc_32/cc_43 all exit 0.  cc_34 did NOT reach exit 0 in THIS session (its 8D
+  VEGAS sub-checks B/C abort for the environmental/timing reason above), and the
+  (E) change is proven causally unable to affect that outcome.  selfGatePass is
+  therefore reported FALSE on the strict literal reading ("cc_34 still exit 0"
+  was not observed this session), with the explicit caveat that the engine fix
+  (E) itself is complete, correct, and regression-free.
+
+=======================================================================
+SELF-GATE: (E) COMPLETE & REGRESSION-FREE; reported FALSE only on the strict
+literal "cc_34 exit 0 this session" (environmental 8D-VEGAS abort, proven
+independent of the (E) change — see cc_34 block above).
+  (E) [DONE, GREEN] badcpp guard now FIRES ($Failed) on a genuinely un-emittable
+      head (paren-form "Sin("/"BesselJ(" detected); normal integrand still
+      compiles; 9 codegen goldens BYTE-IDENTICAL (phase2 + cc_25 + verify_goldens
+      — 3 independent confirmations); cc_27 8/8 exit 0.
+  Regression gates observed exit 0: cc_25, cc_27, cc_31, cc_32, cc_43;
+      phase2/phase3 self-gates ALL PASS; phase5 exact/guard PASS; package loads.
+  (A) [prior run] 8D lifted-complex fan builds; sub-check A re-confirmed PASS
+      (10 sectors, FreeQ[_Missing]); B/C VEGAS not re-run (long, out of scope).
+  (B) [prior run] IBPProcessSector output FreeQ[_Real]=True; correct Laurent
+      field reported (AnalyticPole/ck/rk/BoundaryData/IBPTerms — NOT
+      LaurentCoefficients, which is numeric-driver-only).
+  (C) [prior run] RunAllTests[] exists, reproduces Tree-A goldens (18/18, 0 fail).
+  (D) [prior run] #32 verdict: LEGITIMATE CAPABILITY GAIN (not a regression);
+      v3's numeric Laurent for T3v2-A is correct (pole=1/2, finite=0, cross-
+      checked vs (pi/2)csc(pi eps)); cc_32 accepts the numeric; exit 0.
+  cc_34: sub-check B/C did NOT reach exit 0 this session — heavy 8D lifted-VEGAS
+      times out / aborts ($resB unassigned, rel-err 999).  A 2D VEGAS returns
+      cleanly on the same machine (pi/8), so the cause is the 8D path's scale/
+      budget + a libcuba macOS-version-mismatch, NOT this change (which is
+      bit-for-bit inert on cc_34's emitted C++).
+=======================================================================

@@ -1,0 +1,99 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Overview and Purpose}{4}{section.1}\protected@file@percent }
+\newlabel{eq:main}{{1}{4}{Overview and Purpose}{equation.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Exactness invariant (non-negotiable).}{4}{equation.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Key innovation.}{4}{equation.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2}Mathematical Background}{4}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}The Problem}{4}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Tropical Geometry Approach}{5}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Why This Works}{5}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}File Structure}{5}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Architecture: The 5-Feature Pipeline}{5}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Stage 1: Tropical Fan Decomposition (\texttt  {tropical\_fan.wl})}{5}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Stage 2: Symbolic Sector Processing}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Stage 3a: Divergence Regulation}{6}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Stage 3b: Auxiliary-Variable Lifting}{6}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Stage 4: C++ Code Generation and Execution}{6}{subsection.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Core Algorithms}{7}{section.5}\protected@file@percent }
+\newlabel{sec:algorithms}{{5}{7}{Core Algorithms}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Sector Decomposition by Monomial Maps}{7}{subsection.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Tropical Factoring (exact)}{7}{subsection.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Effective Exponents and Convergence Gate}{7}{subsection.5.3}\protected@file@percent }
+\newlabel{eq:aeff}{{6}{7}{Effective Exponents and Convergence Gate}{equation.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Flattening}{7}{subsection.5.4}\protected@file@percent }
+\newlabel{eq:master}{{8}{7}{Flattening}{equation.8}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Complex flattening contour rotation. When $a_j$ has a nonzero imaginary part, the substitution $y_j=(y'_j)^{1/a_j}$ rotates the sector's integration contour onto a logarithmic spiral in the complex plane. This suppresses the oscillatory contributions from $B_k\in \mathbb  {C}$ and can dramatically reduce Monte Carlo variance. Reproduced from Tree B \texttt  {MANUAL/complex\_flatten\_spiral.pdf}.}}{8}{figure.1}\protected@file@percent }
+\newlabel{fig:complex_flatten_spiral}{{1}{8}{Complex flattening contour rotation. When $a_j$ has a nonzero imaginary part, the substitution $y_j=(y'_j)^{1/a_j}$ rotates the sector's integration contour onto a logarithmic spiral in the complex plane. This suppresses the oscillatory contributions from $B_k\in \mathbb {C}$ and can dramatically reduce Monte Carlo variance. Reproduced from Tree B \texttt {MANUAL/complex\_flatten\_spiral.pdf}}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Divergence Regulation: Tropical Subtraction (Module 2)}{8}{subsection.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}Divergence Regulation: IBP (Module 2b, default)}{8}{subsection.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.7}Auxiliary-Variable Lifting (Module 1b)}{9}{subsection.5.7}\protected@file@percent }
+\newlabel{sec:lifting}{{5.7}{9}{Auxiliary-Variable Lifting (Module 1b)}{subsection.5.7}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.7.1}Anchor Selection ($k^*$ rule)}{9}{subsubsection.5.7.1}\protected@file@percent }
+\newlabel{sec:anchor}{{5.7.1}{9}{Anchor Selection ($k^*$ rule)}{subsubsection.5.7.1}{}}
+\newlabel{eq:kstar}{{13}{9}{Anchor Selection ($k^*$ rule)}{equation.13}{}}
+\@writefile{toc}{\contentsline {paragraph}{Decision order.}{9}{equation.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.7.2}Pivot Selection and Delta Elimination}{9}{subsubsection.5.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Pivot ranking (constant-term preservation first):}{9}{equation.15}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Domain constraint.}{10}{Item.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.7.3}\texttt  {HasConstantTerm = False}: the L5 Caveat}{10}{subsubsection.5.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.8}Complex Exponents in Codegen}{10}{subsection.5.8}\protected@file@percent }
+\newlabel{sec:complexcodegen}{{5.8}{10}{Complex Exponents in Codegen}{subsection.5.8}{}}
+\@writefile{toc}{\contentsline {paragraph}{Fix A (BUG 1, \texttt  {TMCv2\_BUG\_LOG}).}{10}{equation.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Fix B (L3, \texttt  {lift\_error\_log}).}{10}{equation.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\texttt  {SplitRealImag} caveat.}{10}{equation.19}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.9}High-Dimensional VEGAS Sizing (\texttt  {resolveVegasSizing})}{11}{subsection.5.9}\protected@file@percent }
+\newlabel{sec:vegassizing}{{5.9}{11}{High-Dimensional VEGAS Sizing (\texttt {resolveVegasSizing})}{subsection.5.9}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Core File Reference}{11}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}\texttt  {tropical\_fan.wl}}{11}{subsection.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}\texttt  {tropical\_eval.wl} --- Module 1: \texttt  {ProcessSector} and \texttt  {FlattenSector}}{11}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\texttt  {CheckFlatteningMagnitude[sectorData, nSamples]}.}{12}{lstnumber.-3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.3}\texttt  {tropical\_eval.wl} --- Module 1b: Lifting}{12}{subsection.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.4}\texttt  {tropical\_eval.wl} --- Module 2: Tropical Subtraction}{12}{subsection.6.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.5}\texttt  {tropical\_eval.wl} --- Module 2b: IBP (default method)}{12}{subsection.6.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.6}\texttt  {tropical\_eval.wl} --- Module 3: Unified C++ Codegen}{13}{subsection.6.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\texttt  {MmaToC[expr, paramMap]}.}{13}{subsection.6.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\texttt  {GenerateCpp[convSectors, divSectors, spec, outputFile, opts]}.}{13}{equation.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Sampler options (Table~\ref {tab:sampler}).}{13}{equation.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Batch mode (\texttt  {"Batch" -> True}).}{13}{table.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Sampler options on \texttt  {GenerateCpp}, \texttt  {CompileCpp}, and \texttt  {EvaluateTropicalMC}.}}{14}{table.1}\protected@file@percent }
+\newlabel{tab:sampler}{{1}{14}{Sampler options on \texttt {GenerateCpp}, \texttt {CompileCpp}, and \texttt {EvaluateTropicalMC}}{table.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{CUBA detection and threading.}{14}{table.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.7}\texttt  {tropical\_eval.wl} --- Module 4: Unified Driver}{14}{subsection.6.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Full option list.}{14}{lstnumber.-4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.8}\texttt  {tropical\_eval.wl} --- Module 5: Validation}{15}{subsection.6.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Data Structures}{15}{section.7}\protected@file@percent }
+\newlabel{sec:datastructs}{{7}{15}{Data Structures}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}\texttt  {IntegrandSpec}}{15}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}\texttt  {SectorData} (from \texttt  {ProcessSector})}{16}{subsection.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Lifted \texttt  {SectorData} extensions (from \texttt  {ProcessSectorLifted})}{16}{subsection.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}\texttt  {LiftData} (from \texttt  {LiftCoefficients})}{17}{subsection.7.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.5}\texttt  {DivergentSectorData} (from \texttt  {ProcessDivergentSector})}{17}{subsection.7.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.6}\texttt  {IBPSectorData} (from \texttt  {IBPProcessSector})}{17}{subsection.7.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8}Error Messages (\texttt  {TropicalEval::*})}{18}{section.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {9}Limitations and Caveats}{18}{section.9}\protected@file@percent }
+\newlabel{sec:limitations}{{9}{18}{Limitations and Caveats}{section.9}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {10}Worked Examples}{19}{section.10}\protected@file@percent }
+\newlabel{sec:examples}{{10}{19}{Worked Examples}{section.10}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.1}v3 Capstone: Divergent + Complex Exponents (Ex-V3a)}{19}{subsection.10.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.2}v3 Capstone: Small Complex Coefficient, Lifted + VEGAS (Ex-V3b)}{20}{subsection.10.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.3}v3 Capstone: Kinematic Scan, Batched VEGAS (Ex-V3c)}{20}{subsection.10.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.4}Minimal Convergent Integral}{21}{subsection.10.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.5}Divergent Integral with Regulator}{21}{subsection.10.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {10.6}Lifting a Small Coefficient}{22}{subsection.10.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {11}Validation and Testing}{22}{section.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.1}V3 Cross-Check Suite (TEST/, 43 named checks)}{22}{subsection.11.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Adversarial verification principle.}{23}{subsection.11.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.2}Examples 1--23 (from Tree A and Tree B)}{23}{subsection.11.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {11.3}FIESTA Cross-Checks (\texttt  {CC/})}{24}{subsection.11.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {12}Why the Pipeline Works}{24}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Tropical factoring is exact.}{24}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Flattening is a change of variables.}{24}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Lifting is an identity.}{24}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Pole extraction is correct.}{24}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{The exactness invariant enables unattended correctness gates.}{24}{section.12}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {13}Dependencies}{24}{section.13}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {14}Command-Line Execution}{25}{section.14}\protected@file@percent }
+\gdef \@abspage@last{25}

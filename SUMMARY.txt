@@ -1,0 +1,717 @@
+================================================================================
+  TROPICAL MONTE CARLO v3 EVALUATION PIPELINE
+  Summary of tropical_eval.wl / tropical_fan.wl
+================================================================================
+
+Version 3 = the divergence/IBP engine (Tree A: TROPICAL_MONTE_CARLO) merged
+with the lifting/complex engine (Tree B: TROPICAL_MONTE_CARLOv2), refactored
+into a single non-duplicated package with complex-lifting fixes from the bug
+logs baked in.  NEVER edit OLD_CODE/.
+
+
+1.  THE PROBLEM
+================================================================================
+
+We want to numerically evaluate generalized Euler integrals of the form
+
+    I = Integral_{[0,inf)^n} dx_1 ... dx_n  prod_i x_i^{A_i}  prod_j P_j(x)^{B_j}
+
+where P_j are polynomials in x_1,...,x_n with real OR COMPLEX coefficients,
+A_i are monomial exponents (real or complex, may depend on regulator eps),
+and B_j are polynomial exponents (real or complex, may depend on eps).
+
+The challenges are:
+  - singular behavior near coordinate hyperplanes (x_i -> 0);
+  - different monomials dominate in different regions;
+  - enormous variance without importance sampling;
+  - 1/eps poles when exponents pass through zero;
+  - extreme polynomial coefficients (very large or very small) inflate variance.
+
+Direct adaptive quadrature scales poorly in dimension and kinematic count.
+
+
+2.  THE STRATEGY: TROPICAL DECOMPOSITION + FLATTENING + MONTE CARLO
+================================================================================
+
+The pipeline has four conceptual stages:
+
+    (a) Tropical fan  -->  (b) Sector processing  -->  (c) C++ generation  -->  (d) MC/VEGAS
+
+The emphasis of v3 is the tropical decomposition (a-b), which is exact and
+symbolic.  C++ Monte Carlo / VEGAS is one consumer of the decomposition.
+
+
+2a.  TROPICAL FAN DECOMPOSITION  (tropical_fan.wl)
+--------------------------------------------------------------------------------
+
+Input:  The Newton polytope of the product P_1 * P_2 * ... * P_m
+Output: A simplicial fan partitioning the positive orthant in R^n
+
+The fan depends only on which monomials are present (the support), not on
+their coefficients or on the exponents B_j.  For integrands with
+kinematic-dependent or extreme coefficients, use a unit-coefficient proxy.
+
+In code:
+    fanPoly = P1 * P2 * ... * Pm;
+    verts   = PolytopeVertices[fanPoly^(-1), vars];
+    fanData = ComputeDecomposition[verts];
+
+The package tropical_fan.wl computes this via Polymake.  v3 adds a private
+helper computeFanScaled (K-scaling for high-dimensional lifted fans, §6.4 of
+plan.md) that retries the normal-fan computation with scaled copies K*verts
+for K in {1, n+2, 2n+4, 6n+6}.
+
+High-D note: the K-scaled fan is cached and may be passed explicitly via
+"FanData" for repeated runs (9D fans can take minutes to compute).
+
+
+2b.  SECTOR PROCESSING  (Module 1: ProcessSector / FlattenSector)
+--------------------------------------------------------------------------------
+
+For each sector (simplicial cone with rays rho_1,...,rho_n):
+
+Step 1: Monomial change of variables.
+
+    x_i = prod_j  y_j^{M_{ij}}     where  M = -Transpose[{rho_1,...,rho_n}]
+
+    Jacobian: dx_1...dx_n = |det(M)| * prod_j y_j^{rawA_j - 1} dy_1...dy_n
+    where rawA = (A + 1) . M.
+
+Step 2: Tropical factoring.
+
+    d_{k,j} = min_m (exponent of y_j in monomial m of P_k)
+    P_k(y) = prod_i y_i^{d_{k,i}} * Q_k(y)   (exact algebraic identity)
+    a_i^eff = rawA_i + sum_k B_k * d_{k,i}
+
+    The factoring uses only exponent vectors, not coefficients.  Correctness
+    is unaffected by extreme coefficients; only MC variance changes.
+
+Step 3: Flattening substitution (FlattenSector).
+
+    y_i = (y'_i)^{1/a_i^eff}
+
+    After flattening: domain is [0,1]^n, no monomial prefactor, prefactor =
+    |det(M)| / prod(a_i^eff), each exponent e_{m,i} -> e_{m,i}/a_i^eff.
+    Integrand is O(1) -- ideal for uniform MC.
+
+FlattenSector is factored out from ProcessSector and accepts an optional eps
+argument: the divergence predicate is evaluated at eps->0 when eps is present.
+
+
+2c.  DIVERGENCE REGULATION  (Modules 2 and 2b)
+--------------------------------------------------------------------------------
+
+When Re(a_k^eff) -> 0 as eps -> 0 (i.e. a_k(eps) = c_k * eps + O(eps^2)):
+
+MODULE 2: TROPICAL SUBTRACTION (ProcessDivergentSector)
+
+    I_sector = G_0 / (c_k * eps) + G_1 / c_k + R + O(eps)
+
+    G_0  -- (n-1)-dim integral (pole coefficient), F simplified at y_k = 0
+    G_1  -- G_0 * log-insertion sum (eps^0 finite correction)
+    R    -- remainder integral [F_full - F_simple] * y_k^{a_k(0)-1}, convergent
+
+MODULE 2b: IBP POLE EXTRACTION (IBPProcessSector)  [DEFAULT method]
+
+    I_sector = (1/a_k) [B_boundary - sum_t coeff_t * I_t]
+
+    B_boundary  -- (n-1)-dim integral of f|_{y_k=1} (convergent)
+    I_t         -- n-dim integrals from monomial decomposition of d/dy_k f
+    coeff_t     -- B_j * c_m * e_{m,k}
+
+    Each IBP term has new effective exponent alpha_{t,k} = a_k + e_{m,k} >= 1
+    at eps=0 (convergent).  Different terms get DIFFERENT flattening transforms.
+    eps-expansion must happen BEFORE flattening.
+
+Both methods are KEPT in v3 and cross-check each other: IBP is the default
+(Method -> Automatic resolves to "IBP"), subtraction is the validating
+cross-check and is reachable via Method -> "Subtraction" or
+LaurentFromSubtraction.
+
+Pole structure (single divergence, either method):
+    Pole coeff = (B^{(0)} - S_0) / c_k
+    Finite     = [(B^{(1)} - S_1) - r_k*(B^{(0)} - S_0)] / c_k
+
+NESTED-DIVERGENCE LIMITATION:
+    Both methods handle a SINGLE divergent variable per sector.  Sectors with
+    >1 divergent variable are refused ($Failed, TropicalEval::nested /
+    TropicalEval::nestedIBP).  The full integral at a fixed eps is still
+    reachable via "EpsilonValue" -> eps.
+
+
+2d.  AUXILIARY-VARIABLE LIFTING  (Module 1b)
+--------------------------------------------------------------------------------
+
+When a polynomial coefficient C is extreme (|C| >> 1 or |C| << 1), lifting
+replaces C*x^alpha by z^k * x^alpha with:
+
+    z0 = |C|^(1/k)   (exact anchor, kept exact in WL)
+    c  = C / z0^k    (O(1) residual; equals 1 for real positive C)
+
+The lifted integrand is decomposed on the (n+1)-dimensional fan.  The delta
+constraint delta(z - z0) is resolved per sector by a pivot substitution,
+reducing the dimension back to n.
+
+Pivot ranking (constant-term preservation is first):
+    (1) HasConstantTerm = True after re-clearing   [MOST IMPORTANT]
+    (2) |m_p| = 1   (unit pivot exponent)
+    (3) max min_j Re[atilde_j]   (best integrability margin)
+
+CONSTANT-TERM CAVEAT (L5 risk):
+    Sectors with HasConstantTerm = False may have INFINITE true MC variance.
+    The sample-based error bar can understate the true error.  For such sectors:
+      - Trust the exact ValidateLiftedDecomposition result, NOT the MC error bar.
+      - Cross-check against a reference (NIntegrate, CUBA Cuhre).
+      - Never accept the MC error bar for a HasConstantTerm=False sector without
+        an independent reference.
+
+Anchor selection (k* rule):
+    k* = max(1, ceil(|log|C|| / log tau))  with tau = 1000 (detector band).
+    Decision order: geometry gate first (require a surviving sector with
+    HasConstantTerm=True and all Re[atilde]>0; if none for any k, do NOT lift),
+    then smallest k with z0 in [1/tau, tau], then simpler geometry.
+    Full procedure: OLD_CODE/.../AUXT/anchor_selection_procedure.md.
+
+Lifting and divergence handling are MUTUALLY EXCLUSIVE per call (N3).
+Combining them is documented future work.
+
+
+2e.  COMPLEX EXPONENTS  (Module 1 + 1b, codegen)
+--------------------------------------------------------------------------------
+
+A_i (monomial) and B_j (polynomial) may be complex-valued.  The default path:
+
+    result *= std::exp(B_j * std::log(P_j))   [complex log, complex B_j]
+
+This is always correct and is the v3 default (ComplexExponentMode -> "Direct").
+
+The opt-in "SplitRealImag" VEGAS-variance mode (ComplexExponentMode ->
+"SplitRealImag") uses the split identity:
+
+    prod_j P_j^{B_j} = prod_j P_j^{Re(B_j)} * exp(i * sum_j Im(B_j) * log P_j)
+
+TWO FIXES are required for this to be correct (from bug-log complex-lifting
+branch; implement ONLY with both fixes applied):
+
+  Fix A (BUG 1 / TMCv2_BUG_LOG): use the COMPLEX log.
+    The split identity uses log P_j (complex), NOT std::log(std::abs(P_j)).
+    Using |P_j| silently drops the magnitude factor exp(-Im(B)*arg P), which
+    is 1 only for real-positive P_j.  With complex coefficients arg P != 0,
+    so the bug is invisible in real-coefficient tests but wrong in general.
+    Fix: emit std::log(P_j) (complex) and fold cx(0, Im(B_j)) into the phase.
+
+  Fix B (lift_error_log L3): restore the tropical MONOMIAL factor.
+    log P_k = log(monomial factor) + log Q_k; the tropical factoring removed
+    the monomial y^{d_k}.  The oscillatory phase must add back the term:
+    sum_k Im(B_k) * (Const_k + sum_i Coeffs_{k,i} * log y'[i])
+    where (for unlifted sectors): Const=0, Coeffs_i = d_{k,i}/a_eff_i.
+    This is stored per sector in SectorData key "MonoFactorLog" -> {Const, Coeffs}.
+
+SplitRealImag CAVEAT:
+    For very large Im(B), the VEGAS variance built on Re(B) can inflate.
+    Cross-check against "Direct" and an independent reference.
+    Re(B) controls the convergence criterion; Im(B) only produces oscillations.
+
+EXACTNESS INVARIANT:
+    The entire tropical decomposition is exact/symbolic.  Floating point appears
+    in exactly two places:
+      1. numerical integration of flattened sector integrands (MC/VEGAS)
+      2. independent numerical cross-checks (NIntegrate, CUBA)
+    No decision inside the decomposition may be made by evaluating a float
+    (no 10^-12 tolerance checks on exponent realness, no N[...] on exponents).
+    The only sanctioned heuristic float is DetectExtremeCoefficients choosing
+    which coefficient to lift; that choice cannot affect correctness.
+
+
+2f.  C++ CODE GENERATION  (Module 3: GenerateCpp)
+--------------------------------------------------------------------------------
+
+A single GenerateCpp function (collapsed from the old GenerateCppMonteCarlo +
+GenerateCppMonteCarloIBP) generates self-contained C++ for all integrand types:
+
+    integrand_conv_N   -- convergent sector: prefactor * prod Q_j^{B_j}
+    integrand_g0_N     -- G0 (eps=0 limit): (n-1)-dim, simplified polys
+    integrand_g1_N     -- G1 (finite part): G0 * log-insertion sum
+    integrand_rem_N    -- remainder: prefactor * y_k^{a_k-1} * (F_full - F_simple)
+    (IBP boundary and IBP term integrands are also handled parametrically)
+
+For lifted sectors each integrand_conv_N also contains a domain-constraint
+indicator (returns 0 outside the feasible region).
+
+Expression conversion (MmaToC):
+    Integer n          -->  "n.0"
+    Rational p/q       -->  "(p.0/q.0)"
+    Complex[a,b]       -->  "cx(a, b)"
+    Power[x, n]        -->  "std::pow(x, n)"
+    Log[x]             -->  "std::log(x)"
+    Kinematic symbol   -->  "params[i]"
+
+Log-exp polynomial evaluation:
+    c * y1^a1 * y2^a2 = c * exp(a1*log(y1) + a2*log(y2))
+    For complex a: exp(complex_a * log(y)) = y^complex_a, branch-cut free.
+
+CUBA auto-detection (detectCuba[]):
+    Memoized; detects CUBA under TROPICAL_REQUIRES_CUBA sentinel.
+    Hard $Failed if Vegas requested but CUBA absent (no silent MC fallback).
+
+badcpp gate:
+    If any flattened coefficient contains ComplexInfinity, DirectedInfinity,
+    Indeterminate, or an unconverted symbolic head, GenerateCpp returns $Failed
+    (TropicalEval::badcpp) instead of writing uncompilable C++.
+    [Phase 6 / BUG #27 fix] cppBadTokens now matches the form codegen actually
+    emits: CForm renders an unconverted head in PAREN form ("Sin(", "BesselJ(",
+    ...), not bracket form, and ComplexInfinity prints as "DirectedInfinity()".
+    The old bracket-form tokens ("Sin[", ...) never matched, so the guard was a
+    no-op and uncompilable C++ was emitted silently.  The guard now scans an
+    explicit deny-list of Mathematica heads in paren form (with a word boundary)
+    plus the "DirectedInfinity"/"Indeterminate" literals; supported heads are
+    emitted lowercase/std::-qualified so good output (incl. generated P0(/Vegas(
+    identifiers) is never flagged and the 9 codegen goldens stay byte-identical.
+
+Sampler options:
+    "Integrator" -> "MC"    plain uniform Monte Carlo (default, zero new deps)
+    "Integrator" -> "VEGAS" CUBA-Vegas adaptive importance sampling (opt-in)
+
+    "Batch" -> False        default; per-kinematic-point evaluation
+    "Batch" -> True         VEGAS only; shares one low-discrepancy sample set
+                            across a chunk of kinematic points (large speedup
+                            for large scans).  Convergent / lifted-convergent
+                            path only; divergent/IBP path falls back to per-kp.
+
+    "VegasEpsRel", "VegasEpsAbs", "VegasSeed", "VegasNStart", "VegasNIncrease",
+    "VegasNBatch", "VegasMinEval"  -- Vegas tuning (default: Automatic).
+
+    "CubaMaxComp" -> 512    ceiling on Vegas ncomp for the batch path.
+
+High-D VEGAS sizing (resolveVegasSizing):
+    VEGAS defaults (NStart=1000, NIncrease=500, NBatch=1000) are tuned for
+    n<=4 and produce confidently WRONG values for sector dimension >= 6.
+    resolveVegasSizing resolves Automatic to ~ base * 3^(d-4) for d >= 5.
+    TropicalEval::vegasbudget fires when NSamples < 20 * NStart.
+    In high-D, always cross-check against a reference rather than trusting
+    the VEGAS error bar.
+
+SeedBase option:
+    Compile-time default (option "SeedBase", default 42) AND runtime argv[5]
+    override.  The same binary can be re-run at new seeds without recompiling:
+        tropical_mc <in> <out> [n_samples] [n_threads] [seed_base]
+
+
+3.  DRIVER AND VALIDATION  (Modules 4 and 5)
+================================================================================
+
+3a.  EvaluateTropicalMC  (unified Module 4 driver)
+--------------------------------------------------------------------------------
+
+Options (full list):
+
+    "Method"        -> Automatic   (* "None" if convergent, "IBP" if divergent.
+                                      Force: "None"|"IBP"|"Subtraction". *)
+    "Lift"          -> None        (* None | Automatic | <lift-rules>;
+                                      mutually exclusive with Method != "None" *)
+    "Integrator"    -> "MC"        (* "MC" (default) | "VEGAS" *)
+    "EpsilonValue"  -> None        (* substitute eps->value for fixed-eps eval *)
+    "NSamples"      -> 10^6
+    "NThreads"      -> Automatic
+    "SeedBase"      -> 42
+    "RunChecks"     -> True
+    "PrecisionGoal" -> 3
+    "Verbose"       -> True
+    "WorkingDirectory" -> Automatic
+    "Batch"         -> False       (* VEGAS only *)
+    "CubaMaxComp"   -> 512
+    "VegasEpsRel"   -> Automatic
+    "VegasEpsAbs"   -> Automatic
+    "VegasSeed"     -> 0
+    "VegasNStart"   -> Automatic
+    "VegasNIncrease"-> Automatic
+    "VegasNBatch"   -> Automatic
+    "VegasMinEval"  -> 0
+    "ComplexExponentMode" -> Automatic
+                           (* Automatic: "Direct" exp(B*log P);
+                              opt-in "SplitRealImag" for VEGAS variance -- see
+                              §6.3 caveat and §2e above before using *)
+
+Thin wrappers for API continuity:
+    EvaluateTropicalMCLifted[spec, kinPoints, opts]
+    LaurentFromSubtraction[spec, fan, kin, opts]
+
+
+3b.  Validation  (Module 5)
+--------------------------------------------------------------------------------
+
+ValidateDecomposition[spec, fanData, testKinematics, precisionGoal]
+    Cross-checks sector sum against direct NIntegrate.  Returns
+    DirectResult, SectorSum, RelativeError, SectorResults.
+
+ValidateLiftedDecomposition[origSpec, liftedSpec, liftedFan, liftData, kin, pg]
+    Cross-checks lifted sector sum against direct NIntegrate of the ORIGINAL
+    (unlifted) integral.  Returns DroppedSectors (EmptyDomain count).
+
+ValidateSubtraction[divSD, sd, spec, kin, eps]
+    Cross-checks G0/(c_k*eps) + G1/c_k + Remainder against sector NIntegrate.
+
+ValidateIBP[ibpSD, sd, spec, kin, eps]
+    Cross-checks the IBP formula against direct NIntegrate at finite eps.
+
+RunAllTests[]
+    Full v3 cross-check suite entry point.  Exits nonzero on any FAIL.
+
+
+4.  FUNCTION REFERENCE
+================================================================================
+
+PUBLIC FUNCTIONS (TropicalEval` context)
+--------------------------------------------------------------------------------
+
+(* fan -- tropical_fan.wl *)
+PolytopeVertices[integrand, vars]
+ComputeDecomposition[verts]
+ComputeDecompositiony[verts]
+convexHullVertices[points]
+translateToOriginInteger[vertices]
+
+(* core decomposition *)
+ParsePolynomial[poly, vars]
+ProcessSector[spec, dualVerts, simplex, coneIndex]
+FlattenSector[clearedPolys, effectiveAVals, prefactorBase, eps:None]
+CheckFlatteningMagnitude[sectorData, nSamples]
+ValidateDecomposition[spec, fanData, testKin, pg]
+
+(* lifting *)
+DetectExtremeCoefficients[spec, threshold:1000, opts]
+    Returns list of <|"PolyIndex", "ExponentVector", "Coefficient",
+    "Magnitude", "SuggestedK"|>.  SuggestedK uses the k* rule.
+    Symbolic/kinematic coefficients are skipped.
+
+LiftCoefficients[spec, liftRules]
+    liftRules: list of <|"PolyIndex"->j, "ExponentVector"->alpha, "k"->k|>.
+    Returns <|"LiftedSpec"->..., "LiftData"->...|>.
+
+ProcessSectorLifted[liftedSpec, dualVerts, simplex, coneIndex, liftData]
+    Returns SectorData + lifted keys (see DATA STRUCTURES).
+
+ValidateLiftedDecomposition[origSpec, liftedSpec, liftedFan, liftData, kin, pg]
+
+EvaluateTropicalMCLifted[spec, kinPoints, opts]  (thin wrapper)
+
+(* divergence *)
+IdentifyDivergences[sectorData, eps]
+ProcessDivergentSector[sectorData, spec]
+ValidateSubtraction[divSD, sd, spec, kin, eps]
+IBPReduceSector[sectorData, eps]
+IBPProcessSector[sectorData, spec]
+IBPCheckBoundary[sectorData, spec, nPoints]
+ValidateIBP[ibpSD, sd, spec, kin, eps]
+
+(* codegen + back-end *)
+MmaToC[expr, paramMap]
+GenerateCpp[convSectors, divSectors, spec, outFile, opts]
+    (replaces GenerateCppMonteCarlo + GenerateCppMonteCarloIBP)
+CompileCpp[srcFile, outputBinary, debug]
+detectCuba[]
+
+(* drivers *)
+EvaluateTropicalMC[spec, fanData, kin, opts]   (unified)
+EvaluateTropicalMCLifted[spec, kin, opts]      (thin wrapper)
+LaurentFromSubtraction[spec, fan, kin, opts]   (thin wrapper)
+
+(* tests *)
+RunAllTests[]
+
+
+DATA STRUCTURES
+--------------------------------------------------------------------------------
+
+IntegrandSpec (Association):
+    "Polynomials"        -> {P1, P2, ...}       symbolic polynomials
+    "MonomialExponents"  -> {A1, A2, ...}       one per variable (may be complex)
+    "PolynomialExponents"-> {B1, B2, ...}       one per polynomial (may be complex)
+    "Variables"          -> {x[1], x[2], ...}
+    "KinematicSymbols"   -> {lam, mu, ...}      or {} if none
+    "RegulatorSymbol"    -> eps                  or None
+
+SectorData (Association, returned by ProcessSector):
+    "ConeIndex"          -> integer
+    "RayMatrix"          -> M (n x n matrix)
+    "DetM"               -> det(M)
+    "SelectedRays"       -> {rho_1, ..., rho_n}
+    "RawExponents"       -> rawA (before tropical factoring)
+    "NewExponents"       -> effectiveA (after tropical factoring)
+    "MinExponents"       -> {{d_{1,1},...}, ...} per polynomial
+    "TransformedPolys"   -> monomials in y-space (signed exponents)
+    "ClearedPolys"       -> monomials after factoring (non-negative exponents)
+    "FlattenedPolys"     -> monomials after flattening (exps / a_eff)
+    "Prefactor"          -> |det(M)| / prod(a_i^eff)
+    "IsDivergent"        -> True/False
+    "DivergentVariable"  -> index k (0 if convergent)
+    "Dimension"          -> n
+    "PolynomialExponents"-> {B1, ...}
+    "MonoFactorLog"      -> {Const, Coeffs}     [new in v3; for SplitRealImag mode]
+
+Lifted SectorData extensions (returned by ProcessSectorLifted):
+    "HasConstantTerm"    -> True/False   [L^2 health indicator; False = possible
+                            infinite variance -- sample sigma may understate error]
+    "EmptyDomain"        -> True         [sector contributes zero; dropped]
+    "PivotIndex"         -> p
+    "PivotExponent"      -> m_p
+    "ZRow"               -> z-row of M
+    "AugmentedA"         -> effective exponents before delta resolution
+    "DomainConstraint"   -> feasible region description
+    "Atilde"             -> (n-1)-vector of effective exponents after substitution
+
+LiftData (returned by LiftCoefficients):
+    "z0"                 -> exact anchor value z0 = |C|^(1/k)
+    "AuxVariable"        -> x[n+1]
+    "AuxIndex"           -> n+1
+    "Rules"              -> list of lift rules applied
+    "Residuals"          -> c_i = C_i / z0^{k_i} (exact, for multi-rule lifts)
+    "OriginalSpec"       -> copy of the unlifted spec
+
+DivergentSectorData (from ProcessDivergentSector):
+    "G0FlatPolys", "G0Prefactor", "G0Dimension" -> (n-1)-dim G0 data
+    "G1LogInsertions"    -> <| "VariableTerms", "PolynomialTerms" |>
+    "Remainder"          -> <| "FullPolys", "SimplifiedPolys", "Prefactor",
+                               "DivVarIndex", "DivVarExp", "Dimension", ... |>
+    "AnalyticPole"       -> 1/c_k  (symbolic)
+    "ck"                 -> leading coefficient of a_k(eps)
+
+IBPSectorData (from IBPProcessSector):
+    "ConeIndex", "Method" -> "IBP"
+    "DivergentVariables" -> {k1, k2, ...}
+    "NDivergent"         -> number of divergent variables
+    "ck"                 -> leading coefficient c_k
+    "rk"                 -> second-order correction a_k^(2)/c_k
+    "BoundaryData"       -> <| "FlatPolys", "Prefactor", "Dimension" (n-1),
+                               "PolyExponents", "LogInsertions" |>
+    "IBPTerms"           -> list of term associations (per IBP step), each with:
+                            "FlatPolys", "Prefactor", "Dimension" (n),
+                            "PolyExponents", "Coeff0", "Coeff1",
+                            "LogInsertions", "Alpha0", "Alpha1"
+    "NTerms"             -> total number of IBP terms
+    "IBPPrefactors"      -> {-1/a_{k1}, -1/a_{k2}, ...}
+    "AnalyticPole"       -> 1/c_k  (symbolic)
+
+
+5.  FILES
+================================================================================
+
+Core packages (TROPICAL_MONTE_CARLO3/):
+  tropical_fan.wl           Tropical fan computation via Polymake
+                            (+ additive computeFanScaled for high-D lifting)
+  tropical_eval.wl          Main evaluation package (merged, de-duplicated)
+                            M0: Primitives (ParsePolynomial, TransformExponents,
+                                MmaToC, GenerateMonomialSumCpp)
+                            M1: ProcessSector, FlattenSector (eps-aware)
+                            M1b: Lifting (DetectExtremeCoefficients,
+                                 LiftCoefficients, ProcessSectorLifted)
+                            M2: Divergence subtraction (IdentifyDivergences,
+                                ProcessDivergentSector)
+                            M2b: IBP (IBPReduceSector, IBPProcessSector,
+                                  IBPCheckBoundary)
+                            M3: Unified codegen (GenerateCpp, CompileCpp,
+                                detectCuba, resolveVegasSizing)
+                            M4: Unified driver (EvaluateTropicalMC, wrappers)
+                            M5: Validation (ValidateDecomposition, etc.)
+  SUMMARY.txt               This file
+  MANUAL/manual.tex         Comprehensive reference manual
+
+Examples and tests (TROPICAL_MONTE_CARLO3/EXAMPLES/):
+  tropical_eval_examples.wl   Examples 1-14 (convergent core)
+  tropical_eval_examples2.wl  Examples 15-20 (complex exponents, small coeffs)
+  tropical_eval_examples3.wl  Examples 21-23 (exact Gamma, CUBA cross-checks)
+  run_validation_suite.wl     Entry point: runs all tests, exits nonzero on FAIL
+  test_divergent.wl           Divergent pipeline tests (Tests 3,4,8-18)
+  test_lifted.wl              Test 23: lifted-integral pipeline (A/B/C/D)
+  test_coverage.wl            Coverage: complex B, kin+eps, numerator, batch
+  test_nested_divergence.wl   Nested-divergence limitation pinned ($Failed)
+  test_divergent_crosscheck.wl IBP and subtraction cross-check on 3D divergent
+  test_vegas.wl               MC vs VEGAS parity (V1-V4 continuous, L1-L3 lifted)
+  test_seedbase.wl            SeedBase runtime-argv override
+  test_cuba.wl                CUBA cross-check of all test-suite integrals
+  cuba_common.wl              Shared CUBA cross-check generator (generateCubaSource)
+  vegas_vs_mc_examples.wl     MC vs Vegas vs exact (single integrals)
+  vegas_batch_example.wl      Kinematic scan: MC / per-kp Vegas / batched Vegas
+  vegas_vs_mc_divergent.wl    Divergent + both samplers + both div methods
+  speed_comparison.wl         Sampler speed/accuracy benchmark
+
+Cross-check suite (TROPICAL_MONTE_CARLO3/TEST/):
+  baselines/                  Golden transcripts captured from OLD_CODE
+  cc_*.wl                     43 named cross-checks (see plan.md §8)
+  gen_sectors.wl              computeFanRobust reference (ported to fan)
+
+SANDBOX (TROPICAL_MONTE_CARLO3/SANDBOX/):
+  sandbox_lift_common.wl, sandbox_toy0/1/2.wl, bench_lift_variance.wl,
+  verify_complex_flatten.wl, z0_sweep_*.wl, sandbox_true_sigma.wl
+
+Cross-checks vs FIESTA (TROPICAL_MONTE_CARLO3/CC/):
+  compare_pole_and_finite.wl, fiesta_bubblepp_standalone.wl, etc.
+  (Requires FIESTA install + path edits; skips gracefully if absent.)
+
+Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
+  (auto-created, gitignored)  Generated C++, compiled binaries, kinematic
+                              data files, MC result files.
+
+  NOTE: Run MC-executing scripts ONE AT A TIME per WorkingDirectory.
+  Two concurrent MC jobs clobber each other's binary/result files.
+  The symbolic NIntegrate-gated test suite is unaffected.
+
+
+6.  KNOWN LIMITATIONS
+================================================================================
+
+  L1. SINGLE DIVERGENT VARIABLE PER SECTOR.
+      Both divergence methods (subtraction and IBP) handle at most ONE divergent
+      variable per sector (a simple 1/eps pole).  Sectors with >1 divergent
+      variable are refused ($Failed, TropicalEval::nested / ::nestedIBP).
+      The full integral at a fixed eps is still reachable via "EpsilonValue".
+
+  L2. LIFTING AND DIVERGENCE ARE MUTUALLY EXCLUSIVE.
+      A sector is plain-convergent, divergent, OR lifted -- not divergent+lifted.
+      Combining them is documented future work (plan.md N3).
+
+  L3. HasConstantTerm = False -> POSSIBLE INFINITE MC VARIANCE.
+      When HasConstantTerm is False after delta-elimination, the lifted integrand
+      may not be in L^2 on [0,1]^n.  The sample-based sigma (from finite MC)
+      UNDERSTATES the true sigma, and the MC estimate can significantly deviate
+      from the true value.  Variance comparison between lifted and unlifted is
+      unreliable for such sectors.  Always cross-check against an independent
+      reference (NIntegrate, CUBA Cuhre) rather than trusting the MC error bar.
+      (Tracked as risk 1 and L5 in the bug logs; pivot ranking addresses this
+      by preferring constant-term-preserving pivots, but it cannot be avoided
+      in all cases -- e.g. certain degenerate lifted polytopes.)
+
+  L4. SplitRealImag Re(B) CAVEAT.
+      The opt-in SplitRealImag VEGAS-variance mode (ComplexExponentMode ->
+      "SplitRealImag") builds importance sampling from Re(B); for very large
+      Im(B) this can inflate variance relative to "Direct".  Always cross-check
+      SplitRealImag against Direct and against an independent reference before
+      trusting SplitRealImag results.  The default "Direct" mode is always safe.
+
+  L5. HIGH-D VEGAS "ERROR BAR LIES" RISK (L1/L5 in bug logs).
+      VEGAS defaults (NStart=1000, NIncrease=500, NBatch=1000) produce
+      confidently wrong values for sector dimension >= 6 -- tight error bars
+      that systematically miss the true value.  resolveVegasSizing and the
+      vegasbudget message mitigate this, but in high dimension ALWAYS cross-check
+      against an independent reference rather than trusting the VEGAS error bar.
+
+  L6. DEGENERATE LIFTED POLYTOPE.
+      If the lifted polynomial has fewer monomials than (n+2) in (n+1) variables,
+      or those monomials span a lower-dimensional affine subspace, the automatic
+      fan fails (TropicalEval::liftdegenerate).  Supply an explicit "FanData".
+      Moreover, all lifted sectors of such a polynomial may have
+      HasConstantTerm = False (structural limitation, see L3).
+
+  L7. KINEMATIC-SYMBOL COEFFICIENTS CANNOT BE AUTO-LIFTED.
+      DetectExtremeCoefficients skips kinematic (symbolic) coefficients --
+      their magnitude is unknown at lift time.  Manual lift rules still allowed.
+
+  L8. NESTED DIVERGENCES (1/eps^{d>=2}).
+      Both divergence methods refuse sectors with >1 divergent variable.
+      Multi-order pole assembly is future work.
+
+  L9. HARNESS HYGIENE.
+      Do not use over-broad Check[expr, $Failed] in test/driver harnesses --
+      it catches benign WL messages (General::munfl on ~1e-204 sector magnitudes,
+      Divide::infy, Greater::nord) and reports spurious $Failed.
+      Capture the raw Association return; Quiet/guard tiny-magnitude messages.
+
+
+7.  USAGE
+================================================================================
+
+Minimal convergent example:
+
+    Get["tropical_eval.wl"];
+
+    poly = 1 + 2 x[1]^2 + x[2]^2 + x[1] x[2]^2;
+    vars = {x[1], x[2]};
+
+    spec = <|
+      "Polynomials"        -> {poly},
+      "MonomialExponents"  -> {0, 0},
+      "PolynomialExponents"-> {-2},
+      "Variables"          -> vars,
+      "KinematicSymbols"   -> {},
+      "RegulatorSymbol"    -> None
+    |>;
+
+    verts   = PolytopeVertices[poly^(-1), vars];
+    fanData = ComputeDecomposition[verts];
+
+    vr = ValidateDecomposition[spec, fanData, {}, 3];
+    Print["Rel error: ", vr["RelativeError"]];
+
+    results = EvaluateTropicalMC[spec, fanData, {}];
+
+Divergent integral with regulator:
+
+    spec = <|
+      "Polynomials"        -> {1 + x[1] + x[2] + x[1]*x[2]},
+      "MonomialExponents"  -> {2*eps - 1, 0},
+      "PolynomialExponents"-> {-2},
+      "Variables"          -> {x[1], x[2]},
+      "KinematicSymbols"   -> {},
+      "RegulatorSymbol"    -> eps
+    |>;
+
+    (* Method -> Automatic resolves to "IBP" for divergent sectors *)
+    results = EvaluateTropicalMC[spec, fanData, {},
+                "EpsilonValue" -> 0.01,
+                "Integrator" -> "VEGAS"];
+
+Lifting a small coefficient (variance reduction):
+
+    spec = <|
+      "Polynomials"        -> {1 + 10^(-4) x[1]^2 + x[2]^2 + x[1]*x[2]^2},
+      "MonomialExponents"  -> {0, 0},
+      "PolynomialExponents"-> {-2},
+      "Variables"          -> {x[1], x[2]},
+      "KinematicSymbols"   -> {},
+      "RegulatorSymbol"    -> None
+    |>;
+
+    (* Auto-detect and lift; uses k* anchor rule *)
+    results = EvaluateTropicalMCLifted[spec, {}, "Integrator" -> "VEGAS"];
+
+Kinematic scan (one compile, many evaluations):
+
+    (* Fan from unit-coefficient proxy *)
+    verts   = PolytopeVertices[(1 + x[1]^2 + x[2]^2)^(-1), vars];
+    fanData = ComputeDecomposition[verts];
+
+    kinPoints = Table[{1.0, 0.5 + 0.01 i, 1.0 + 0.005 i}, {i, 7200}];
+    results   = EvaluateTropicalMC[spec, fanData, kinPoints,
+                  "Integrator" -> "VEGAS", "Batch" -> True];
+
+Command line (run ONE AT A TIME per WorkingDirectory):
+
+    wolframscript -file EXAMPLES/run_validation_suite.wl
+    wolframscript -file EXAMPLES/test_divergent_crosscheck.wl
+    wolframscript -file EXAMPLES/test_lifted.wl
+    wolframscript -file EXAMPLES/test_vegas.wl   (requires CUBA)
+    wolframscript -file EXAMPLES/test_cuba.wl    (requires CUBA)
+
+
+8.  CROSS-CHECKS AND VALIDATION STRATEGY
+================================================================================
+
+The v3 cross-check suite (TEST/) covers 43 named checks (plan.md §8).
+Key principle: NO gate is judged by the agent that produced the result;
+every numeric PASS is verified against >= 2 INDEPENDENT oracles.
+
+Highest-value checks:
+  #1  sector sum vs NIntegrate (the workhorse)
+  #2  vs exact Gamma/Beta closed form (complex exponents)
+  #3  divergent (pole, finite) vs exact Laurent (Gamma products)
+  #4  IBP vs subtraction agree on (pole, finite) [reason both are kept]
+  #5  vs CUBA Cuhre on the direct integrand (independent oracle)
+  #8  vs FIESTA5 (external sector-decomposition tool; optional)
+  #17 lifted vs unlifted exactness (< 0.5% vs exact)
+  #19 sample sigma vs true sigma (flags HasConstantTerm=False sectors)
+  #21b complex-BASE + complex-exponent lifting (gates BUG 1 fix)
+  #22 determinism / SeedBase reproducibility
+  #23 batched VEGAS == per-kp VEGAS (gates the §5.1 fold)
+  #25 golden-master codegen regression (byte-identical emitted C++)
+  #27 known-limitation enforcement -> clean $Failed
+  #43 exactness guard: FreeQ[symbolicOutput, _Real] before MmaToC boundary
