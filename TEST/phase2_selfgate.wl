@@ -160,6 +160,62 @@ Module[{poly, vars, spec, verts, fan, sd, conv, keysToCheck, payload},
   ];
 ];
 
+(* #43 corpus, complex-B lifted+divergent (planCXLIFTDIV.md §5): an exact spec
+   (B = -2 + 3/10 i, eps symbolic) must carry EXACT per-IBP-piece MonoFactorLog
+   and Re(atilde)-derived fields all the way to the MmaToC boundary — the
+   SplitRealImag codegen numericizes only inside mmaToCInternal. *)
+Module[{poly, vars, eps2, spec, lift, ls, ld, specRe, imB, fan, verts,
+        sd, divSecs, ibp, payload},
+  eps2 = Symbol["epsCx43"];
+  poly = 1 + x[1] x[2] + 10^6 x[1]^2 + x[2]^2;
+  vars = {x[1], x[2]};
+  spec = <|"Polynomials" -> {poly}, "MonomialExponents" -> {-1 + eps2, 0},
+    "PolynomialExponents" -> {-2 + 3/10 I}, "Variables" -> vars,
+    "KinematicSymbols" -> {}, "RegulatorSymbol" -> eps2|>;
+  lift = LiftCoefficients[spec,
+    {<|"PolyIndex" -> 1, "ExponentVector" -> {2, 0}, "k" -> 3|>}];
+  If[!AssociationQ[lift],
+    report["complex-B lift+div: lift built", False],
+    ls  = lift["LiftedSpec"];  ld = lift["LiftData"];
+    imB = Im[ls["PolynomialExponents"]];
+    specRe = MapAt[Re, ls, {Key["PolynomialExponents"]}];  (* decompose on Re(B) *)
+    verts = PolytopeVertices[(Times @@ ls["Polynomials"])^(-1), ls["Variables"]];
+    fan = computeFanScaled[verts];
+    sd = Table[
+      Module[{s0},
+        s0 = ProcessSectorLifted[specRe, fan[[1]], fan[[2, s]], s, ld,
+               "Eps" -> eps2, "Verbose" -> False];
+        If[AssociationQ[s0] && !KeyExistsQ[s0, "EmptyDomain"],
+          s0["ImagPolyExponents"] = imB]; s0],
+      {s, Length[fan[[2]]]}];
+    divSecs = Select[sd, AssociationQ[#] && TrueQ[#["IsDivergent"]] &];
+    report["complex-B lift+div: a divergent sector exists",
+           Length[divSecs] > 0];
+    If[Length[divSecs] > 0,
+      ibp = IBPProcessSector[divSecs[[1]], specRe];
+      report["complex-B lift+div: IBPProcessSector succeeds",
+             AssociationQ[ibp]];
+      If[AssociationQ[ibp],
+        (* the codegen-bound phase + magnitude payload: per-piece MonoFactorLog
+           (boundary + terms), Re(atilde)-derived B0/a0, the un-flattened
+           LiftedMonoFactor, and the IBP prefactors — all EXACT (no inexact real)
+           on an exact spec.  Im(B) (3/10) is exact too. *)
+        payload = {
+          divSecs[[1]]["LiftedMonoFactor"],
+          ibp["BoundaryData"]["MonoFactorLog"],
+          #["MonoFactorLog"] & /@ ibp["IBPTerms"],
+          (* the brought-down complex IBP coefficient (Re(B)+i Im(B)) must be
+             exact too — Im(B)=3/10 is an exact rational, not an inexact real. *)
+          #["Coeff0"] & /@ ibp["IBPTerms"],
+          #["Coeff1"] & /@ ibp["IBPTerms"],
+          ibp["B0"], ibp["a0"], ibp["BoundaryData"]["Avals"]};
+        report["complex-B lift+div MonoFactorLog/Re(atilde)/coeff payload FreeQ _Real",
+               FreeQ[payload, _Real]]
+      ]
+    ]
+  ]
+];
+
 (* ---------------------------------------------------------------------------
    (3) FlattenSector eps-threading classification sanity.
    1+x1 with A=-1+eps, B=-2: the sector containing the x1->0 boundary is

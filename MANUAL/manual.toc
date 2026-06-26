@@ -61,17 +61,17 @@
 \contentsline {subsection}{\numberline {7.5}\texttt {DivergentSectorData} (from \texttt {ProcessDivergentSector})}{18}{subsection.7.5}%
 \contentsline {subsection}{\numberline {7.6}\texttt {IBPSectorData} (from \texttt {IBPProcessSector})}{19}{subsection.7.6}%
 \contentsline {section}{\numberline {8}Error Messages (\texttt {TropicalEval::*})}{20}{section.8}%
-\contentsline {section}{\numberline {9}Limitations and Caveats}{20}{section.9}%
+\contentsline {section}{\numberline {9}Limitations and Caveats}{21}{section.9}%
 \contentsline {section}{\numberline {10}Worked Examples}{22}{section.10}%
 \contentsline {subsection}{\numberline {10.1}v3 Capstone: Divergent + Complex Exponents (Ex-V3a)}{22}{subsection.10.1}%
-\contentsline {subsection}{\numberline {10.2}v3 Capstone: Small Complex Coefficient, Lifted + VEGAS (Ex-V3b)}{22}{subsection.10.2}%
+\contentsline {subsection}{\numberline {10.2}v3 Capstone: Small Complex Coefficient, Lifted + VEGAS (Ex-V3b)}{23}{subsection.10.2}%
 \contentsline {subsection}{\numberline {10.3}v3 Capstone: Kinematic Scan, Batched VEGAS (Ex-V3c)}{23}{subsection.10.3}%
-\contentsline {subsection}{\numberline {10.4}Minimal Convergent Integral}{23}{subsection.10.4}%
+\contentsline {subsection}{\numberline {10.4}Minimal Convergent Integral}{24}{subsection.10.4}%
 \contentsline {subsection}{\numberline {10.5}Divergent Integral with Regulator}{24}{subsection.10.5}%
 \contentsline {subsection}{\numberline {10.6}Lifting a Small Coefficient}{24}{subsection.10.6}%
-\contentsline {subsection}{\numberline {10.7}Lifting a Divergent Integral (Case A)}{24}{subsection.10.7}%
-\contentsline {section}{\numberline {11}Validation and Testing}{25}{section.11}%
-\contentsline {subsection}{\numberline {11.1}V3 Cross-Check Suite (TEST/, 45 named checks)}{25}{subsection.11.1}%
+\contentsline {subsection}{\numberline {10.7}Lifting a Divergent Integral (Case A)}{25}{subsection.10.7}%
+\contentsline {section}{\numberline {11}Validation and Testing}{26}{section.11}%
+\contentsline {subsection}{\numberline {11.1}V3 Cross-Check Suite (TEST/, 45 named checks)}{26}{subsection.11.1}%
 \contentsline {paragraph}{Adversarial verification principle.}{26}{subsection.11.1}%
 \contentsline {subsection}{\numberline {11.2}Examples 1--23 (from Tree A and Tree B)}{27}{subsection.11.2}%
 \contentsline {subsection}{\numberline {11.3}FIESTA Cross-Checks (\texttt {CC/})}{27}{subsection.11.3}%

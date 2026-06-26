@@ -570,7 +570,8 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
       variable are refused ($Failed, TropicalEval::nested / ::nestedIBP).
       The full integral at a fixed eps is still reachable via "EpsilonValue".
 
-  L2. LIFTING + A SIMPLE 1/eps POLE -- SUPPORTED (Case A).   [planAXpDIV.md]
+  L2. LIFTING + A SIMPLE 1/eps POLE -- SUPPORTED (Case A; + complex B via
+      SplitRealImag).   [planAXpDIV.md / planCXLIFTDIV.md]
       A lifted sector may ALSO carry a single 1/eps pole.  ProcessSectorLifted is
       eps-aware: it classifies each post-delta effective exponent atilde at eps->0
       (exact, no tolerance) and may emit a divergent lifted SectorData carrying a
@@ -597,18 +598,35 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
           pole UNDERCOUNTS -- a pre-existing sector-decomposition limitation (L3),
           NOT specific to lifting.  Use the Subtraction route there.
 
+      COMPLEX polynomial exponents B with lifting + a 1/eps pole -- SUPPORTED via
+      ComplexExponentMode -> "SplitRealImag" (planCXLIFTDIV.md, cc_46).  Sectors
+      are decomposed on Re(B) (real measure + real divergence/domain machinery)
+      and Im(B) is reintroduced as an oscillatory phase exp(i Im(B)(log P +
+      MonoFactorLog)).  BOTH routes deliver the complex Laurent:
+        - Subtraction (LaurentFromSubtraction, pinned eps): every sector
+          convergent => the lifted SplitRealImag path runs unchanged.
+        - IBP (Method->Automatic/"IBP"): the per-IBP-piece MonoFactorLog is
+          re-derived (un-flattened numerators / piece alpha0), and the brought-
+          down IBP coefficient carries the full complex B_j (the i*Im(B_j) phase-
+          derivative term).  cc_46: IBP and Subtraction poles agree to ~1e-4 and
+          match NIntegrate of the complex original (n=2,3).
+      Direct mode with complex-B lifting remains refused (liftcomplex: a complex
+      atilde has no real domain indicator) -- use SplitRealImag.
+
       NOT yet supported (refused with a clean $Failed, never a wrong number):
         - Case B: the divergent variable couples to the lifted domain face
           (ic_k != 0 for EVERY admissible pivot).  The caseA-first pivot
           ranking prefers a decoupled pivot whenever one exists, so Case B is
           rare; when unavoidable, TropicalEval::liftdivdomain aborts (cc_44).
           A log-space remap is future work.
-        - SplitRealImag x lift x divergence: refused with
-          TropicalEval::splitliftdiv (per-term MonoFactorLog re-derivation is
-          future work).  Use ComplexExponentMode -> "Direct".
-        - Complex polynomial exponents B with lifting: inherits the pre-existing
-          liftcomplex limitation (a complex atilde has no real domain indicator),
-          independent of divergence.
+        - SplitRealImag x lift x divergence on the INLINE symbolic-eps
+          Subtraction path (Method->"None"/"Subtraction"): refused
+          (TropicalEval::splitliftdiv) -- that path's G0/G1 emitters are not
+          phase-aware.  Use Method->Automatic/"IBP" or LaurentFromSubtraction.
+        - The complex analogue of Case B: the dropped monomial factor carries a
+          nonzero Im(B) exponent in the divergent direction (the real pole would
+          acquire an imaginary shift) -- refused (TropicalEval::splitdivmono);
+          use the pinned-eps Subtraction route.
 
   L3. HasConstantTerm = False -> POSSIBLE INFINITE MC VARIANCE.
       When HasConstantTerm is False after delta-elimination, the lifted integrand
@@ -755,3 +773,6 @@ Highest-value checks:
   #25 golden-master codegen regression (byte-identical emitted C++)
   #27 known-limitation enforcement -> clean $Failed
   #43 exactness guard: FreeQ[symbolicOutput, _Real] before MmaToC boundary
+  cc_45 lifting x divergence battery (n=2,3,4; real B + one complex-B row)
+  cc_46 complex-B x lifting x divergence: IBP vs Subtraction vs NIntegrate
+        (complex Laurent), n=2,3 [planCXLIFTDIV.md]

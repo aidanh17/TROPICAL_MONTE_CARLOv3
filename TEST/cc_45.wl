@@ -153,6 +153,54 @@ runExample["4D-a: (1+x1 x2+x3 x4+10^4 x1^2+x2^2+x3^2+x4^2)^-3",
   {1 + x[1] x[2] + x[3] x[4] + 10^4 x[1]^2 + x[2]^2 + x[3]^2 + x[4]^2}, {-3},
   <|"PolyIndex" -> 1, "ExponentVector" -> {2, 0, 0, 0}, "k" -> 1|>, False, 0.01, 500000];
 
+(* ── Complex-B row (planCXLIFTDIV.md §7): the 2D-B integrand with a COMPLEX
+   exponent, Subtraction route (ComplexExponentMode -> "SplitRealImag"), against a
+   complex NIntegrate Laurent.  Confirms the multi-dim battery's lifting machinery
+   carries complex exponents; cc_46 cross-checks IBP-vs-Sub on the same family. ── *)
+Module[{eps, vars, spec, lift, ls, ld, verts, fan, wdir, sub, poleS, finS,
+        recS, niCx, gv, fd, poleNI, finNI, reconNI, esStar = 0.01},
+  Print["----------------------------------------------------------------"];
+  Print["  CX-2D: (1+x1 x2+10^6 x1^2+x2^2)^(-2+0.3i)  (Subtraction, SplitRealImag)"];
+  eps = Symbol["ee45cx"]; vars = {x[1], x[2]};
+  spec = <|"Polynomials" -> {1 + x[1] x[2] + 10^6 x[1]^2 + x[2]^2},
+    "MonomialExponents" -> {-1 + eps, 0}, "PolynomialExponents" -> {-2 + 3/10 I},
+    "Variables" -> vars, "KinematicSymbols" -> {}, "RegulatorSymbol" -> eps|>;
+  lift = qr@LiftCoefficients[spec,
+    {<|"PolyIndex" -> 1, "ExponentVector" -> {2, 0}, "k" -> 3|>}];
+  ls = lift["LiftedSpec"]; ld = lift["LiftData"];
+  verts = qr@PolytopeVertices[(Times @@ ls["Polynomials"])^(-1), ls["Variables"]];
+  fan = qr@computeFanScaled[verts];
+  wdir = FileNameJoin[{$pkgRoot, "TEST", "INTERFILES", "cc45", "CX_2D"}];
+  Quiet[CreateDirectory[wdir, CreateIntermediateDirectories -> True], {CreateDirectory::eexist}];
+  (* complex NIntegrate Laurent *)
+  niCx[es_] := Module[{us, sub2, jac, ig},
+    us = {Unique["u"], Unique["u"]}; sub2 = Table[x[i] -> us[[i]]/(1 - us[[i]]), {i, 2}];
+    jac = Times @@ Table[1/(1 - us[[i]])^2, {i, 2}];
+    ig = (us[[1]]/(1 - us[[1]]))^(-1 + es) *
+         ((1 + x[1] x[2] + 10^6 x[1]^2 + x[2]^2)^(-2 + 3/10 I) /. sub2) * jac;
+    qr@NIntegrate[ig, Evaluate[Sequence @@ ({#, 0, 1} & /@ us)],
+      Method -> "GlobalAdaptive", PrecisionGoal -> 6, WorkingPrecision -> 30, MaxRecursion -> 60]];
+  gv = MapThread[#1 #2 &, {N[{esStar, 2 esStar, 4 esStar}, 30], niCx /@ N[{esStar, 2 esStar, 4 esStar}, 30]}];
+  fd = MapThread[{#1, #2} &, {N[{esStar, 2 esStar, 4 esStar}, 30], gv}];
+  poleNI = (Fit[{#1, Re[#2]} & @@@ fd, {1, ee}, ee] /. ee -> 0) +
+         I (Fit[{#1, Im[#2]} & @@@ fd, {1, ee}, ee] /. ee -> 0);
+  finNI = Coefficient[Fit[{#1, Re[#2]} & @@@ fd, {1, ee}, ee], ee] +
+        I Coefficient[Fit[{#1, Im[#2]} & @@@ fd, {1, ee}, ee], ee];
+  reconNI = poleNI/esStar + finNI;
+  sub = qr@LaurentFromSubtraction[ls, fan, {{}}, "LiftData" -> ld,
+    "ComplexExponentMode" -> "SplitRealImag", "EpsilonValues" -> {esStar, 2 esStar, 4 esStar},
+    "Integrator" -> "MC", "NSamples" -> 400000, "WorkingDirectory" -> wdir, "Verbose" -> False];
+  poleS = sub["Results"][[1]]["Pole"]; finS = sub["Results"][[1]]["Finite"];
+  recS = poleS/esStar + finS;
+  Print["   Sub: pole=", poleS, "  recon=", recS, "  NIntegrate recon=", N@reconNI];
+  cc45Assert["CX-2D Sub recon vs NIntegrate (complex)",
+    NumericQ[Abs[recS - reconNI]] && Abs[(recS - reconNI)/reconNI] < 0.02,
+    "rel<0.02", "rel=" <> ToString[sci@Abs[(recS - reconNI)/reconNI]]];
+  cc45Assert["CX-2D genuinely complex pole",
+    NumericQ[Im[poleS]] && Abs[Im[poleS]] > 0.01,
+    "|Im(pole)|>0.01", "Im(pole)=" <> ToString[sci@Im[poleS]]];
+];
+
 Print[];
 Print["================================================================"];
 If[$cc45Pass,
