@@ -578,10 +578,24 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
       divergence routines (ProcessDivergentSector / IBPProcessSector) and codegen
       reconstruct prefactors from PrefactorBase and thread the domain indicator;
       the IBP Laurent assembly adds the PrefactorBase eps-derivative finite term
-      (DLogPrefactor).  Both the IBP route and the LaurentFromSubtraction route
-      handle it (cross-check 41-C: pole/finite agree across routes and reproduce
-      NIntegrate; pole = pi/4 for the canonical toy).  Single-pole-per-sector
-      (L1/L8) still applies to lifted sectors.
+      (DLogPrefactor).  Single-pole-per-sector (L1/L8) still applies.
+
+      TWO ROUTES (cross-check 41-C + cc_45, verified for n = 2, 3, 4 on non-trivial
+      polynomials -- cross terms, linear terms, numerators, multiple polynomials):
+        - LaurentFromSubtraction (UNIVERSAL/ROBUST): pins eps, sums the FULL lifted
+          decomposition (exact), so it reproduces the true pole/finite even when
+          non-trivial polynomials produce HasConstantTerm=False sectors (it does
+          not rely on per-sector pole classification).  This is the recommended
+          route for lifted+divergent Laurents.  cc_45: reconstructs NIntegrate to
+          < 0.3% in every n=2,3,4 example.
+        - IBP (Method->"IBP"): exact ONLY when the pole localizes to an
+          effective-exponent endpoint (every sector HasConstantTerm-clean, e.g. a
+          diagonal-dominant denominator +/- a numerator).  Then IBP and Subtraction
+          poles agree (cc_45 2D-B, 3D-c).  If a convergent sector is
+          HasConstantTerm=False the pole also gets a polynomial-zero contribution
+          (Q_j -> 0 with B_j < 0) that the atilde-classification misses, so the IBP
+          pole UNDERCOUNTS -- a pre-existing sector-decomposition limitation (L3),
+          NOT specific to lifting.  Use the Subtraction route there.
 
       NOT yet supported (refused with a clean $Failed, never a wrong number):
         - Case B: the divergent variable couples to the lifted domain face
