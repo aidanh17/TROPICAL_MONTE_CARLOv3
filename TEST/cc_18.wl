@@ -105,8 +105,16 @@ fmtN[x_] := Which[
    {expr, exp} pairs, causing Set::shape errors and making all I2 diverge.
    ========================================================================== *)
 
-(* PrecisionGoal for the exact-sigma NIntegrate (I1, I2). *)
-$tsPG = 4;
+(* PrecisionGoal for the exact-sigma NIntegrate (I1, I2).
+   HONEST gate (Phase-3): the reference sigma must be CONVERGED, never sampled
+   and never a spurious-timeout->Infinity.  A genuinely-divergent I2 (the
+   HasConstantTerm=False sectors of Case A / Case C) is detected by NIntegrate's
+   OWN non-convergence messages (ncvb/slwcon/eincr/inumr/...), passed to Check as
+   SEPARATE message-name arguments (NOT an Alternatives expression, which left the
+   old Check unevaluated -> non-numeric -> every sector read INFINITE, even the
+   trivially-finite Case D).  Convergent sectors finish in << 1 s; the long safety
+   TimeConstrained below therefore never fires on a finite-variance case. *)
+$tsPG = 6;
 
 (* -----------------------------------------------------------------------
    trueSigmaOne[sd, pg]:
@@ -171,28 +179,39 @@ Module[
 
   integrand2 = integrand^2;
 
-  (* I1 = Int g *)
+  (* I1 = Int g  (converged adaptive NIntegrate). *)
   i1 = Quiet @ NIntegrate[
     integrand,
     Evaluate[Sequence @@ ({#, 0, 1} & /@ yVars)],
-    MaxRecursion -> 20, PrecisionGoal -> pg,
+    MaxRecursion -> 30, PrecisionGoal -> pg,
     Method -> {"GlobalAdaptive", "SingularityHandler" -> "IMT"}
   ];
 
-  (* I2 = Int g^2; may diverge — detect via $Failed / non-numeric / huge value *)
+  (* I2 = Int g^2.  HONEST divergence detection: a genuinely-divergent I2 (the
+     HasConstantTerm=False sectors of Case A / Case C) makes NIntegrate emit its
+     OWN non-convergence messages (ncvb/slwcon/eincr/inumr), which we hand to
+     Check as SEPARATE message-name arguments.  This is the bug fix: the prior
+     version OR-ed the tags into a single Alternatives ("a|b|c"), which is invalid
+     Check syntax — Check stayed UNEVALUATED, so i2result was never numeric and
+     EVERY sector (including the trivially-finite Case A unlifted and Case D) was
+     mis-classified divergent -> INFINITE.  No TimeConstrained->Infinity coercion:
+     a finite-variance sector converges in << 1 s and is detected as finite; a
+     genuinely-divergent sector is detected by the messages above, not by a clock.
+     A long safety TimeConstrained guards only a true hang. *)
   i2result = Quiet @ Check[
     TimeConstrained[
       NIntegrate[
         integrand2,
         Evaluate[Sequence @@ ({#, 0, 1} & /@ yVars)],
-        MaxRecursion -> 20, PrecisionGoal -> pg,
+        MaxRecursion -> 30, PrecisionGoal -> pg,
         Method -> {"GlobalAdaptive", "SingularityHandler" -> "IMT"}
       ],
-      120,    (* 2-minute per-sector timeout *)
+      300,        (* generous safety net; genuine divergence is caught first *)
       $TimedOut
     ],
-    $Failed,
-    NIntegrate::slwcon | NIntegrate::ncvb | NIntegrate::eincr | General::stop
+    $Failed,      (* failure value when a non-convergence message fires *)
+    NIntegrate::ncvb,  NIntegrate::slwcon, NIntegrate::eincr,
+    NIntegrate::inumr, NIntegrate::izero,  NIntegrate::deltam
   ];
 
   Which[

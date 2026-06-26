@@ -169,9 +169,26 @@ $spec8 = <|
   "RegulatorSymbol"     -> None
 |>;
 
-(* Oracle: Re = 0.00317086, confirmed by four independent oracles (Schwinger,
-   Beta-function reduction, c=0 closed form, CUBA Vegas 1e9) in phase5_report. *)
-$oracle8 = 0.00317086`;
+(* Oracle: computed IN-SCRIPT for the ACTUAL check integrand via an independent
+   Schwinger/Symanzik reduction (NOT a hardcoded constant for some other poly).
+     P = 1 + x1 + Sum_{i=2}^8 xi^2,  B = 6.
+     P^{-6} = 1/Gamma[6] Int_0^inf s^5 e^{-s P} ds.  The x-integrals factorize:
+       Int_0^inf e^{-s x1} dx1            = 1/s
+       Int_0^inf e^{-s xi^2} dxi (7 of)   = (1/2) Sqrt[Pi/s]
+     => I = (Sqrt[Pi]/2)^7 / Gamma[6] * Int_0^inf s^5 e^{-s} s^{-1} s^{-7/2} ds
+          = (Sqrt[Pi]/2)^7 Gamma[3/2] / Gamma[6]   (closed form).
+   We evaluate BOTH the closed form and a 1-D NIntegrate of the s-integral and
+   require them to agree, then adopt the closed form as the oracle. *)
+$oracleClosed8 = (Sqrt[Pi]/2)^7 * Gamma[3/2] / Gamma[6];
+$oracleSchw8 = (1/Gamma[6]) * Quiet@NIntegrate[
+   s^5 * Exp[-s] * (1/s) * ((1/2) Sqrt[Pi/s])^7, {s, 0, Infinity},
+   WorkingPrecision -> 40, PrecisionGoal -> 20, MaxRecursion -> 60];
+If[Abs[N[$oracleSchw8/$oracleClosed8 - 1]] > 1*^-8,
+  Print["CC42 FAIL  oracle self-check: closed-form ", N[$oracleClosed8, 12],
+        " vs Schwinger ", N[$oracleSchw8, 12], " disagree"];
+  Quit[1]];
+$oracle8 = N[$oracleClosed8];
+Print["CC42: in-script oracle (Schwinger == closed form) Re = ", N[$oracle8, 12]];
 
 (* FIX (b): Build the 8D fan via computeFanScaled (K-scaling; normal fan is
    scale-invariant) to handle thin lattice simplices in ambient dim>=4.
@@ -346,6 +363,17 @@ Print[];
 
 Print["=== Sub-check C: vegasbudget fires at NSamples < guardFactor*NStart ==="];
 
+(* BUG FIX: interceptBudget MUST hold its argument.  Without HoldFirst the call
+   EvaluateTropicalMC[...] was evaluated at interceptBudget's call site — i.e.
+   BEFORE the HandlerBlock was installed — so the vegasbudget Message fired
+   outside the handler's dynamic scope and was never seen (it printed to the
+   console but `fired` stayed False, the exact symptom that refuted sub-check C).
+   With HoldFirst the body is evaluated only inside Quiet[body], inside the
+   HandlerBlock, so the handler intercepts the message.  The bare-symbol pattern
+   Hold[Message[MessageName[TropicalEval,"vegasbudget"],___],_] is the one that
+   matches (verified in isolation); the StringContainsQ on InputForm is a robust
+   fallback for any context-path variation. *)
+SetAttributes[interceptBudget, HoldFirst];
 interceptBudget[body_] :=
   Module[{fired = False},
     Internal`HandlerBlock[
@@ -353,7 +381,7 @@ interceptBudget[body_] :=
        Function[m,
          If[MatchQ[m, Hold[Message[MessageName[TropicalEval, "vegasbudget"], ___], _]] ||
             MatchQ[m, Hold[Message[TropicalEval`EvaluateTropicalMC::vegasbudget, ___], _]] ||
-            StringContainsQ[ToString[m], "vegasbudget"],
+            StringContainsQ[ToString[m, InputForm], "vegasbudget"],
             fired = True]]},
       Quiet[body]];
     fired];

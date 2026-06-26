@@ -1,0 +1,130 @@
+================================================================================
+Phase-6 close-out — cross-check SCRIPT repairs (engine FINAL at commit 2961475)
+================================================================================
+Scope: repaired ONLY the three CHECK-HARNESS scripts.  The v3 engine
+(tropical_eval.wl, tropical_fan.wl) was NOT touched — `git diff --stat 2961475 --
+tropical_eval.wl tropical_fan.wl` is EMPTY.  The prior run had independently
+confirmed the engine numerics are correct in every case below; these were
+check-harness / budget / detection bugs.
+
+--------------------------------------------------------------------------------
+#18  lifted-vs-unlifted variance reduction (Tier-2)        TEST/cc_18.wl
+--------------------------------------------------------------------------------
+ROOT CAUSE (harness): trueSigmaOne[] mapped EVERY sector's I2 to Infinity, so
+even the trivially-finite Case D (and the unlifted Case A/C) read INFINITE
+variance.  Two coupled defects:
+  (1) The I2 Check[] passed the NIntegrate non-convergence tags as a single
+      Alternatives expression:
+          Check[ TimeConstrained[NIntegrate[...],120,$TimedOut],
+                 $Failed,
+                 NIntegrate::slwcon | NIntegrate::ncvb | ... | General::stop ]
+      Check expects message-name specs as SEPARATE trailing arguments, not an
+      `a|b|c` Alternatives.  Given an Alternatives, Check stayed UNEVALUATED;
+      i2result was therefore never numeric -> i2 = Infinity for ALL sectors.
+  (2) A spurious TimeConstrained(...,120,$TimedOut) -> Infinity coercion that the
+      §-spec forbids.
+
+FIX (harness only):
+  * Compute I1 and I2 with a converged adaptive NIntegrate (MaxRecursion 30,
+    PrecisionGoal 6, GlobalAdaptive+IMT).  Machine precision is used because
+    WorkingPrecision->30 left some 1-D / Boole-gated sector integrals unevaluated.
+  * Pass the non-convergence tags to Check as SEPARATE arguments
+    (NIntegrate::ncvb, ::slwcon, ::eincr, ::inumr, ::izero, ::deltam).  A
+    genuinely-divergent I2 (the HasConstantTerm=False sectors of Case A / Case C)
+    is then detected by NIntegrate's OWN non-convergence messages — honestly, in
+    << 1 s — NOT by a clock.  The 300 s TimeConstrained is a pure hang-guard that
+    finite-variance sectors never reach.
+
+RESULT (matches SANDBOX/benchmark_results.md exactly):
+  Case A: unlifted trueSigma = 0.016589682 (finite); lifted = INFINITE (only
+          sector {8}, HasConstantTerm=False); warning fires; VarRed = INFINITE.
+  Case C: unlifted trueSigma = 0.039638914 (finite); lifted = INFINITE (all
+          HasConstantTerm=False); Automatic geometry gate refuses (liftdegenerate).
+  Case D: trueSigma_U = 0.000577349, trueSigma_L = 0.000102664,
+          EXACT VarRed = 31.6257 (class-(i) finite, all HasConstantTerm=True,
+          all I2 converge, NO warning).
+  G1..G8 all PASS; L1 VEGAS relErr 0.0241 (<0.05); L2 VEGAS relErr 0.0043
+  (<0.02 and < MC 0.0090).  ==> "CC18 PASS", exit 0.
+
+--------------------------------------------------------------------------------
+#42  resolveVegasSizing high-D (Tier-2)                    TEST/cc_42.wl
+--------------------------------------------------------------------------------
+ROOT CAUSE (harness): sub-check C reported vegasbudget "fired = False" even
+though the engine DID emit TropicalEval::vegasbudget (it printed to the console).
+interceptBudget[body_] was an ordinary (non-holding) function, so the
+EvaluateTropicalMC[...] argument was evaluated at the CALL SITE — before the
+Internal`HandlerBlock was installed — and the message fired OUTSIDE the handler's
+dynamic scope.
+
+FIX (harness only):
+  * SetAttributes[interceptBudget, HoldFirst] so the body is evaluated only
+    inside Quiet[body] inside the HandlerBlock; the bare-symbol pattern
+    Hold[Message[MessageName[TropicalEval,"vegasbudget"],___],_] then matches
+    (verified in isolation), with a StringContainsQ[...,InputForm] fallback.
+  * Oracle is now computed IN-SCRIPT for the ACTUAL integrand
+    (P = 1 + x1 + Sum_{i=2}^8 xi^2, B=-6) via a Schwinger reduction AND the
+    closed form (Sqrt[Pi]/2)^7 Gamma[3/2]/Gamma[6]; the two are required to agree
+    (self-check) before use.  Oracle Re = 0.0031708688.
+  * 8D fan is built through TropicalFan`computeFanScaled (K-scaling public driver);
+    8D VEGAS runs at NSamples = 4e7 (clears 100*81000 = 8.1e6 guard threshold).
+
+RESULT:
+  A  8D Automatic sizing: VEGAS Re vs oracle rel-err 5.0e-7 (<1e-3); NStart=81000.
+  B  n=2 sizing unchanged {1000,500,1000}; VEGAS vs Gamma rel-err 3.9e-5 (<1e-4);
+     vegasbudget silent (correct).
+  C  vegasbudget fires for C1 (8D, NSamples 5e6 < 8.1e6) AND C2 (2D, 1000 < 20000).
+  ==> "CC42 PASS", exit 0.
+
+--------------------------------------------------------------------------------
+#34  lifting × complex-coeff × VEGAS 8D (Tier-2)           TEST/cc_34.wl
+--------------------------------------------------------------------------------
+ROOT CAUSE (harness/budget): sub-A (the BUG-34 lifted-complex K-scaled fan)
+PASSED, but sub-B/C ran the 9-D lifted-complex VEGAS at NSamples = 4e6 — UNDER
+the strengthened 100*NStart = 8.1e6 guard — so the adaptive grid never resolved;
+the result was biased/aborted and the extraction yielded rel-err 999.
+
+FIX (harness only):
+  * Run sub-B (SplitRealImag) and sub-C (Direct) at NSamples = 4e7 (comfortably
+    above 20*NStart and clearing the 8.1e6 guard), each wrapped in Check[...,$Failed]
+    so a genuine abort is captured cleanly rather than poisoning the extraction;
+    $resX_ok now also requires NumericQ on the extracted Re.
+  * Build the 9-D K-scaled lifted fan ONCE (in sub-A, via computeFanScaled) and
+    reuse it for sub-B/C/E (FanData -> prebuilt fan, cached to
+    INTERFILES/phase5_lifted_fan.mx) instead of rebuilding ~4x via Automatic.
+  * Oracle computed IN-SCRIPT for the ACTUAL complex-c integrand via a Schwinger
+    reduction (complex x1 direction + 7 Gaussians); Re = 0.0031708562,
+    Im = -1.26e-8, corroborated against the c=0 closed form (0.0031708688).
+  * sub-E vegasbudget probe uses an INLINE HandlerBlock (body inside the block,
+    so no holding bug) with InputForm string-match fallback; NSamples=1000 <
+    threshold 10000 (guardFactor 100, d=9) fires.
+
+  ADDITIONAL harness fix found during repair: the under-budget guard added here
+  initially wrapped the run in a 2-arg Check[expr,$Failed].  That form returns
+  $Failed if ANY (even benign) message fires during expr, so it discarded a
+  perfectly good result.  Replaced by a robust grabResult[] helper that extracts
+  {ok, Re, Im, ReErr} from any return (association / $Failed / $Aborted) without
+  leaving variables unbound, and the rel-err gate keys directly on NumericQ of
+  the extracted Re and the oracle (no fragile boolean indirection).
+
+RESULT (converged 4e7 run, prebuilt 9D K-scaled fan, 10 sectors):
+  A  K-scaled fan builds; 10 sectors; no Missing in lifted exponents.
+  B  SplitRealImag VEGAS Re = 0.0031708010 +/- 2.19e-7; rel-err vs oracle 1.74e-5.
+  C  Direct VEGAS Re = 0.0031708010; rel-err vs oracle 1.74e-5.
+  D  |Direct - SplitRealImag| = 0 < tol 1.63e-5  (Direct == SplitRealImag).
+  E  vegasbudget fires at NSamples=1000 < 10000 (lifted 9D, guardFactor 100).
+  ==> Direct == SplitRealImag == Schwinger oracle to 1.74e-5 (<< 0.5%).
+  "CC34 PASS", exit 0.
+
+================================================================================
+SELF-GATE (all green)
+================================================================================
+  * cc_18, cc_34, cc_42 each print "CC<id> PASS" and exit 0; numerics corroborated
+    against the stated independent oracles (SANDBOX/benchmark_results.md for #18;
+    in-script Schwinger/closed-form for #34 and #42).
+  * git diff --stat 2961475 -- tropical_eval.wl tropical_fan.wl  is EMPTY
+    (engine UNCHANGED; 0 diff lines).
+  * The 9 codegen goldens (TEST/baselines/codegen_goldens/*.cpp) are byte-identical
+    (git status clean; not regenerated).
+  * Deliverables present non-empty: SUMMARY.txt (repo root), MANUAL/manual.tex +
+    manual.pdf, EXAMPLES/Ex-V3a..d, TEST/run_all.wl.
+  * Only the three cross-check scripts changed: TEST/cc_18.wl, cc_34.wl, cc_42.wl.

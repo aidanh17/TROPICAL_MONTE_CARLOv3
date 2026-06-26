@@ -363,11 +363,12 @@ VEGAS defaults (\texttt{NStart=1000, NIncrease=500, NBatch=1000}) are tuned for 
 \section{Core File Reference}
 %=============================================================================
 
-\subsection{\texttt{tropical\_fan.wl}}
+\subsection{\texttt{tropical\_fan.wl}}\label{sec:fan-api}
 
 \begin{description}
   \item[\texttt{PolytopeVertices[integrand, vars]}] Extracts Newton polytope lattice points from the integrand.
   \item[\texttt{ComputeDecomposition[vertices]}] Returns \texttt{\{dualVertices, simplexList\}}. Internally calls the private \texttt{computeFanScaled} for automatic K-scaling retry on degenerate thin-simplex cases.
+  \item[\texttt{computeFanScaled[vertices]}] \emph{(private)} The K-scaling fan helper in \texttt{tropical\_fan.wl}: retries the normal-fan computation on $K\!\cdot\!\mathrm{verts}$ with $K\in\{1,n+2,2n+4,6n+6\}$ (scale-invariant normal fan) to recover from thin-simplex failures in dim~$\geq 4$. Used both by \texttt{ComputeDecomposition} and by \texttt{EvaluateTropicalMCLifted}'s automatic \texttt{"FanData"} path (Section~\ref{sec:lifted-api}).
   \item[\texttt{ComputeDecompositiony[vertices]}] Variant intersecting with the positive orthant.
   \item[\texttt{convexHullVertices[points]}] Calls Polymake to compute the convex hull.
   \item[\texttt{translateToOriginInteger[vertices]}] Shifts polytope so the origin is an interior lattice point.
@@ -501,12 +502,13 @@ The \texttt{main()} reads kinematic points from an input file, loops over points
 EvaluateTropicalMC[integrandSpec, fanData, kinematicPoints, opts...]
 \end{lstlisting}
 
-Routes on \texttt{"Method"} ($\in$ \texttt{\{Automatic, "None", "IBP", "Subtraction"\}}) and \texttt{"Lift"} ($\in$ \texttt{\{None, Automatic, <liftRules>\}}). The 10-step skeleton is shared: workdir $\to$ fan unpack $\to$ per-sector processing $\to$ optional Validate $\to$ codegen $\to$ compile $\to$ run $\to$ readback $\to$ assemble $\to$ error summary.
+Routes on \texttt{"Method"} ($\in$ \texttt{\{Automatic, "None", "IBP", "Subtraction"\}}) and \texttt{"LiftData"} ($\in$ \texttt{\{None, <association from \texttt{LiftCoefficients}>\}}). The 10-step skeleton is shared: workdir $\to$ fan unpack $\to$ per-sector processing $\to$ optional Validate $\to$ codegen $\to$ compile $\to$ run $\to$ readback $\to$ assemble $\to$ error summary.
 
 Thin wrappers for API continuity:
 \begin{description}
-  \item[\texttt{EvaluateTropicalMCLifted[spec, kin, opts]}] Sets \texttt{"Lift" -> Automatic} and routes through the unified driver.
+  \item[\texttt{EvaluateTropicalMCLifted[spec, kin, opts]}] Auto-detects/applies lifting and routes through the unified driver via the \texttt{"LiftData"} option (see Section~\ref{sec:lifted-api}). This is the typical user-facing entry point for lifting; the bare \texttt{"LiftData"} option on \texttt{EvaluateTropicalMC} is the advanced/low-level path.
   \item[\texttt{LaurentFromSubtraction[spec, fan, kin, opts]}] Forces \texttt{"Method" -> "Subtraction"} and returns the Laurent expansion as \texttt{<|{-1} -> pole, 0 -> finite|>}.
+  \item[\texttt{EvaluateTropicalMCIBP[spec, fan, kin, opts]}] Superseded by \texttt{EvaluateTropicalMC[..., "Method" -> "IBP"]} (which routes to the same private driver); kept for backward compatibility.
 \end{description}
 
 \paragraph{Full option list.}
@@ -516,7 +518,7 @@ Thin wrappers for API continuity:
 \textbf{Option} & \textbf{Default} & \textbf{Description} \\
 \midrule
 \texttt{"Method"} & \texttt{Automatic} & \texttt{"None"|\,"IBP"|\,"Subtraction"}; Auto $\Rightarrow$ IBP if divergent \\
-\texttt{"Lift"} & \texttt{None} & \texttt{None|Automatic|<rules>}; mutually exclusive with divergence \\
+\texttt{"LiftData"} & \texttt{None} & Association from \texttt{LiftCoefficients[]} or \texttt{None}; advanced/low-level path (typical users call \texttt{EvaluateTropicalMCLifted}); mutually exclusive with divergence \\
 \texttt{"Integrator"} & \texttt{"MC"} & \texttt{"MC"} or \texttt{"VEGAS"} \\
 \texttt{"EpsilonValue"} & \texttt{None} & Substitute $\varepsilon\to\text{value}$ (all sectors become convergent) \\
 \texttt{"ComplexExponentMode"} & \texttt{Automatic} & \texttt{"Direct"} or \texttt{"SplitRealImag"} (see Section~\ref{sec:complexcodegen}) \\
@@ -528,6 +530,25 @@ Thin wrappers for API continuity:
 \texttt{"Verbose"} & \texttt{True} & Progress output \\
 \texttt{"WorkingDirectory"} & \texttt{Automatic} & Where generated files go (\texttt{INTERFILES/}) \\
 \multicolumn{3}{l}{Plus all sampler options from Table~\ref{tab:sampler}.} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{\texttt{EvaluateTropicalMCLifted} signature and options.}\label{sec:lifted-api}
+\begin{lstlisting}[language=Mathematica]
+EvaluateTropicalMCLifted[integrandSpec, kinematicPoints, opts...]
+\end{lstlisting}
+The thin lifting wrapper: it detects/applies lifting (calling \texttt{DetectExtremeCoefficients} then \texttt{LiftCoefficients} internally), builds the $(n{+}1)$-dimensional lifted fan, and routes through \texttt{EvaluateTropicalMC} with the resulting \texttt{"LiftData"}. With no extreme coefficients it falls back to plain \texttt{EvaluateTropicalMC} on the original spec. Its five own options (it also forwards all \texttt{EvaluateTropicalMC} options):
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Option} & \textbf{Default} & \textbf{Description} \\
+\midrule
+\texttt{"LiftRules"} & \texttt{Automatic} & Auto-detect extreme coefficients via \texttt{DetectExtremeCoefficients}, or supply explicit rules \\
+\texttt{"Threshold"} & \texttt{1000} & Extreme-coefficient magnitude threshold passed to \texttt{DetectExtremeCoefficients} \\
+\texttt{"AnchorRule"} & \texttt{"kStar"} & Anchor $z_0=|C|^{1/k}$ selection (\texttt{"kStar"} default; \texttt{"Unit"} = legacy) \\
+\texttt{"BandEdgeGuard"} & \texttt{False} & Band-edge guard in extreme-coefficient detection \\
+\texttt{"FanData"} & \texttt{Automatic} & Lifted fan; Automatic uses the K-scaled robust path (\texttt{computeFanScaled}) \\
 \bottomrule
 \end{tabular}
 \end{center}

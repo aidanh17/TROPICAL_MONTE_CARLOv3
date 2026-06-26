@@ -46,25 +46,26 @@
 \contentsline {paragraph}{CUBA detection and threading.}{14}{table.1}%
 \contentsline {subsection}{\numberline {6.7}\texttt {tropical\_eval.wl} --- Module 4: Unified Driver}{14}{subsection.6.7}%
 \contentsline {paragraph}{Full option list.}{14}{lstnumber.-4.1}%
+\contentsline {paragraph}{\texttt {EvaluateTropicalMCLifted} signature and options.}{15}{lstnumber.-4.1}%
 \contentsline {subsection}{\numberline {6.8}\texttt {tropical\_eval.wl} --- Module 5: Validation}{15}{subsection.6.8}%
-\contentsline {section}{\numberline {7}Data Structures}{15}{section.7}%
-\contentsline {subsection}{\numberline {7.1}\texttt {IntegrandSpec}}{15}{subsection.7.1}%
+\contentsline {section}{\numberline {7}Data Structures}{16}{section.7}%
+\contentsline {subsection}{\numberline {7.1}\texttt {IntegrandSpec}}{16}{subsection.7.1}%
 \contentsline {subsection}{\numberline {7.2}\texttt {SectorData} (from \texttt {ProcessSector})}{16}{subsection.7.2}%
-\contentsline {subsection}{\numberline {7.3}Lifted \texttt {SectorData} extensions (from \texttt {ProcessSectorLifted})}{16}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.3}Lifted \texttt {SectorData} extensions (from \texttt {ProcessSectorLifted})}{17}{subsection.7.3}%
 \contentsline {subsection}{\numberline {7.4}\texttt {LiftData} (from \texttt {LiftCoefficients})}{17}{subsection.7.4}%
 \contentsline {subsection}{\numberline {7.5}\texttt {DivergentSectorData} (from \texttt {ProcessDivergentSector})}{17}{subsection.7.5}%
-\contentsline {subsection}{\numberline {7.6}\texttt {IBPSectorData} (from \texttt {IBPProcessSector})}{17}{subsection.7.6}%
+\contentsline {subsection}{\numberline {7.6}\texttt {IBPSectorData} (from \texttt {IBPProcessSector})}{18}{subsection.7.6}%
 \contentsline {section}{\numberline {8}Error Messages (\texttt {TropicalEval::*})}{18}{section.8}%
-\contentsline {section}{\numberline {9}Limitations and Caveats}{18}{section.9}%
-\contentsline {section}{\numberline {10}Worked Examples}{19}{section.10}%
-\contentsline {subsection}{\numberline {10.1}v3 Capstone: Divergent + Complex Exponents (Ex-V3a)}{19}{subsection.10.1}%
+\contentsline {section}{\numberline {9}Limitations and Caveats}{19}{section.9}%
+\contentsline {section}{\numberline {10}Worked Examples}{20}{section.10}%
+\contentsline {subsection}{\numberline {10.1}v3 Capstone: Divergent + Complex Exponents (Ex-V3a)}{20}{subsection.10.1}%
 \contentsline {subsection}{\numberline {10.2}v3 Capstone: Small Complex Coefficient, Lifted + VEGAS (Ex-V3b)}{20}{subsection.10.2}%
-\contentsline {subsection}{\numberline {10.3}v3 Capstone: Kinematic Scan, Batched VEGAS (Ex-V3c)}{20}{subsection.10.3}%
+\contentsline {subsection}{\numberline {10.3}v3 Capstone: Kinematic Scan, Batched VEGAS (Ex-V3c)}{21}{subsection.10.3}%
 \contentsline {subsection}{\numberline {10.4}Minimal Convergent Integral}{21}{subsection.10.4}%
-\contentsline {subsection}{\numberline {10.5}Divergent Integral with Regulator}{21}{subsection.10.5}%
+\contentsline {subsection}{\numberline {10.5}Divergent Integral with Regulator}{22}{subsection.10.5}%
 \contentsline {subsection}{\numberline {10.6}Lifting a Small Coefficient}{22}{subsection.10.6}%
-\contentsline {section}{\numberline {11}Validation and Testing}{22}{section.11}%
-\contentsline {subsection}{\numberline {11.1}V3 Cross-Check Suite (TEST/, 43 named checks)}{22}{subsection.11.1}%
+\contentsline {section}{\numberline {11}Validation and Testing}{23}{section.11}%
+\contentsline {subsection}{\numberline {11.1}V3 Cross-Check Suite (TEST/, 43 named checks)}{23}{subsection.11.1}%
 \contentsline {paragraph}{Adversarial verification principle.}{23}{subsection.11.1}%
 \contentsline {subsection}{\numberline {11.2}Examples 1--23 (from Tree A and Tree B)}{23}{subsection.11.2}%
 \contentsline {subsection}{\numberline {11.3}FIESTA Cross-Checks (\texttt {CC/})}{24}{subsection.11.3}%
@@ -74,5 +75,5 @@
 \contentsline {paragraph}{Lifting is an identity.}{24}{section.12}%
 \contentsline {paragraph}{Pole extraction is correct.}{24}{section.12}%
 \contentsline {paragraph}{The exactness invariant enables unattended correctness gates.}{24}{section.12}%
-\contentsline {section}{\numberline {13}Dependencies}{24}{section.13}%
+\contentsline {section}{\numberline {13}Dependencies}{25}{section.13}%
 \contentsline {section}{\numberline {14}Command-Line Execution}{25}{section.14}%

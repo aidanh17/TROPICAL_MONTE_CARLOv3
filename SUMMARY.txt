@@ -307,8 +307,10 @@ Options (full list):
 
     "Method"        -> Automatic   (* "None" if convergent, "IBP" if divergent.
                                       Force: "None"|"IBP"|"Subtraction". *)
-    "Lift"          -> None        (* None | Automatic | <lift-rules>;
-                                      mutually exclusive with Method != "None" *)
+    "LiftData"      -> None        (* None | <association from LiftCoefficients[]>;
+                                      advanced/low-level path (typical users call
+                                      EvaluateTropicalMCLifted); mutually exclusive
+                                      with Method != "None" *)
     "Integrator"    -> "MC"        (* "MC" (default) | "VEGAS" *)
     "EpsilonValue"  -> None        (* substitute eps->value for fixed-eps eval *)
     "NSamples"      -> 10^6

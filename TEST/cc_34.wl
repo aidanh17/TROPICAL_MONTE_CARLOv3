@@ -134,6 +134,23 @@ recordFail[name_String, extra_String : ""] :=
 record[name_String, ok_, passDetail_String : "", failExtra_String : ""] :=
   If[TrueQ[ok], recordPass[name, passDetail], recordFail[name, failExtra]];
 
+(* Robust extraction of {ok, Re, Im, ReErr} from an EvaluateTropicalMCLifted
+   return.  Tolerates ANY non-association / $Failed / $Aborted return and always
+   yields fully-evaluated values (never leaves a destructured variable bound to
+   an unevaluated If, the symptom that made sub-B/C print "If[$resB_ok, ...]"). *)
+grabResult[res_] := Module[{rs, re, im, err},
+  If[! (AssociationQ[res] && KeyExistsQ[res, "Results"]),
+     Return[{False, Missing["noResult"], Missing["noResult"], 0.}]];
+  rs = res["Results"];
+  If[! (ListQ[rs] && Length[rs] >= 1 && AssociationQ[First[rs]]),
+     Return[{False, Missing["noResult"], Missing["noResult"], 0.}]];
+  re  = Lookup[First[rs], "Re", Missing["noRe"]];
+  im  = Lookup[First[rs], "Im", Missing["noIm"]];
+  err = Lookup[First[rs], "ReErr", 0.];
+  If[NumericQ[re],
+     {True, re, im, err},
+     {False, Missing["nonNumeric"], im, err}]];
+
 
 (* ── 3.  Integrand and oracle ─────────────────────────────────────────────── *)
 (* 8D integrand from phase5_8d.wl.  c = (1+I)*1e-6 is the tiny complex
@@ -157,12 +174,32 @@ $spec = <|
   "RegulatorSymbol"     -> None
 |>;
 
-(* Oracle from phase5_8d.wl (Schwinger WP=40 + CUBA 1e9 independent reference).
-   Im is numerically 0 for real B; we check only Re. *)
-$oracleRe = 0.00317086`;
+(* Oracle computed IN-SCRIPT via an independent Schwinger/Symanzik reduction of
+   the ACTUAL complex-coefficient integrand (not a bare hardcoded constant):
+     P^{-6} = 1/Gamma[6] Int_0^inf s^5 e^{-s P} ds.
+   x2..x8 are Gaussian (7 factors (1/2)Sqrt[Pi/s]); the x1 direction keeps the
+   complex term:  G1(s) = Int_0^inf e^{-s(c x1^2 + x1)} dx1.  Hence
+     I = 1/Gamma[6] Int_0^inf s^5 e^{-s} ((1/2)Sqrt[Pi/s])^7 G1(s) ds.
+   This reproduces phase5_8d.wl's Schwinger WP=40 truth Re=0.00317085620,
+   Im=-1.2605e-8 from first principles.  Im is tiny (real-B integrand); we gate
+   only on Re. *)
+$g1Schw[s_] := NIntegrate[Exp[-s ($cc u^2 + u)], {u, 0, Infinity},
+   WorkingPrecision -> 40, PrecisionGoal -> 18, MaxRecursion -> 50];
+$oracleFull = (1/Gamma[6]) * Quiet@NIntegrate[
+   s^5 Exp[-s] ((1/2) Sqrt[Pi/s])^7 $g1Schw[s], {s, 0, Infinity},
+   WorkingPrecision -> 40, PrecisionGoal -> 12, MaxRecursion -> 60];
+$oracleRe = N[Re[$oracleFull]];
+$oracleIm = N[Im[$oracleFull]];
+(* Corroborate against the c=0 closed form (c is tiny, 1e-6). *)
+$oracleC0 = N[(Sqrt[Pi]/2)^7 Gamma[3/2]/Gamma[6]];
+If[Abs[$oracleRe/$oracleC0 - 1] > 1*^-4,
+  Print["CC34 FAIL  oracle self-check: Schwinger Re ", $oracleRe,
+        " vs c=0 closed form ", $oracleC0, " disagree"];
+  Quit[1]];
 
 Print["CC34: 8D integrand  c = ", $cc, "  B = ", $Bex];
-Print["CC34: oracle  Re = ", $oracleRe, "  (Schwinger WP=40, phase5_8d.wl)"];
+Print["CC34: in-script Schwinger oracle  Re = ", $oracleRe,
+      "  Im = ", $oracleIm, "  (c=0 closed form ", N[$oracleC0, 9], ")"];
 Print["CC34: This exercises BUG-1 / BUG-34 fix regime: arg(P) != 0 for complex c"];
 Print[];
 
@@ -247,6 +284,24 @@ record["A K-scaled fan builds (post BUG-34 fix); no Missing in lifted exponents"
     " sectors=" <> ToString[$nSectors] <> " (expected > 0)"];
 Print[];
 
+(* Reuse the 9D K-scaled fan built in sub-check A for ALL subsequent VEGAS
+   sub-checks instead of FanData -> Automatic, which would otherwise rebuild the
+   (slow, ~4-5 min) lifted fan four separate times.  A cached copy on disk lets
+   re-runs skip the rebuild entirely.  Falls back to Automatic only if sub-A's
+   fan is unusable. *)
+$fanCacheFile = FileNameJoin[{$pkgRoot, "INTERFILES", "phase5_lifted_fan.mx"}];
+$fanData = Which[
+  $fanOK,                          $liftedFan,
+  FileExistsQ[$fanCacheFile],      Import[$fanCacheFile],
+  True,                            Automatic];
+If[$fanOK && !FileExistsQ[$fanCacheFile],
+  Quiet[Export[$fanCacheFile, $liftedFan]]];
+Print["CC34: VEGAS sub-checks use ",
+      If[$fanData === Automatic, "FanData -> Automatic (rebuild)",
+         "the prebuilt 9D K-scaled fan (" <>
+           ToString[Length[$fanData[[2]]]] <> " sectors)"]];
+Print[];
+
 
 (* ── 4B.  SplitRealImag VEGAS vs oracle ─────────────────────────────────── *)
 (* EvaluateTropicalMCLifted with FanData -> Automatic so the wrapper performs
@@ -262,21 +317,27 @@ $wdB = FileNameJoin[{$ioDir, "B_split_vegas"}];
 Quiet[CreateDirectory[$wdB, CreateIntermediateDirectories -> True],
       {CreateDirectory::eexist}];
 
+(* NSamples = 4e7 clears the strengthened high-D guard threshold
+   (100*NStart = 100*81000 = 8.1e6); at 4e6 (the old value) the 9D adaptive grid
+   never resolved, the run was biased/aborted and the result was mis-extracted
+   (the original BUG-34 symptom: $resB unassigned, rel-err 999).
+   Extraction is via the robust helper grabResult[] below, which tolerates ANY
+   non-association / aborted / $Failed return WITHOUT leaving variables unbound
+   (an earlier 2-arg Check[...,$Failed] wrapper here was too aggressive: it
+   tripped on a benign engine message and returned $Failed even when the run
+   actually succeeded). *)
 $resB = TropicalEval`EvaluateTropicalMCLifted[$spec, {{}},
-  "Integrator"          -> "VEGAS",
-  "NSamples"            -> 4000000,
-  "RunChecks"           -> False,
-  "Verbose"             -> False,
-  "WorkingDirectory"    -> $wdB,
-  "FanData"             -> Automatic,
-  "ComplexExponentMode" -> "SplitRealImag"];
+    "Integrator"          -> "VEGAS",
+    "NSamples"            -> 40000000,
+    "RunChecks"           -> False,
+    "Verbose"             -> False,
+    "WorkingDirectory"    -> $wdB,
+    "FanData"             -> $fanData,
+    "ComplexExponentMode" -> "SplitRealImag"];
 
-$resB_ok = AssociationQ[$resB] && KeyExistsQ[$resB, "Results"] &&
-           Length[$resB["Results"]] >= 1;
-$vBRe  = If[$resB_ok, $resB["Results"][[1]]["Re"],  Missing["noResult"]];
-$vBIm  = If[$resB_ok, $resB["Results"][[1]]["Im"],  Missing["noResult"]];
-$eBRe  = If[$resB_ok, $resB["Results"][[1]]["ReErr"], 0.];
-$rBoracle = If[$resB_ok && NumericQ[$vBRe], relErr[$vBRe, $oracleRe], 999.];
+{$resB_ok, $vBRe, $vBIm, $eBRe} = grabResult[$resB];
+$rBoracle = If[NumericQ[$vBRe] && NumericQ[$oracleRe],
+   relErr[$vBRe, $oracleRe], 999.];
 
 Print["  SplitRealImag VEGAS: Re = ", $vBRe, " +/- ", $eBRe,
       "  Im = ", $vBIm];
@@ -301,20 +362,17 @@ Quiet[CreateDirectory[$wdC, CreateIntermediateDirectories -> True],
       {CreateDirectory::eexist}];
 
 $resC = TropicalEval`EvaluateTropicalMCLifted[$spec, {{}},
-  "Integrator"          -> "VEGAS",
-  "NSamples"            -> 4000000,
-  "RunChecks"           -> False,
-  "Verbose"             -> False,
-  "WorkingDirectory"    -> $wdC,
-  "FanData"             -> Automatic,
-  "ComplexExponentMode" -> "Direct"];
+    "Integrator"          -> "VEGAS",
+    "NSamples"            -> 40000000,
+    "RunChecks"           -> False,
+    "Verbose"             -> False,
+    "WorkingDirectory"    -> $wdC,
+    "FanData"             -> $fanData,
+    "ComplexExponentMode" -> "Direct"];
 
-$resC_ok = AssociationQ[$resC] && KeyExistsQ[$resC, "Results"] &&
-           Length[$resC["Results"]] >= 1;
-$vCRe  = If[$resC_ok, $resC["Results"][[1]]["Re"],  Missing["noResult"]];
-$vCIm  = If[$resC_ok, $resC["Results"][[1]]["Im"],  Missing["noResult"]];
-$eCRe  = If[$resC_ok, $resC["Results"][[1]]["ReErr"], 0.];
-$rCoracle = If[$resC_ok && NumericQ[$vCRe], relErr[$vCRe, $oracleRe], 999.];
+{$resC_ok, $vCRe, $vCIm, $eCRe} = grabResult[$resC];
+$rCoracle = If[NumericQ[$vCRe] && NumericQ[$oracleRe],
+   relErr[$vCRe, $oracleRe], 999.];
 
 Print["  Direct VEGAS: Re = ", $vCRe, " +/- ", $eCRe,
       "  Im = ", $vCIm];
@@ -386,7 +444,7 @@ Internal`HandlerBlock[
            HoldPattern[MessageName[TropicalEval`TropicalEval, "vegasbudget"]],
            ___], _]] ||
        (* Fallback: string-match on the tag (catches re-exported symbols). *)
-       StringContainsQ[ToString[msgHeld], "vegasbudget"],
+       StringContainsQ[ToString[msgHeld, InputForm], "vegasbudget"],
        $budgetFired = True
      ]
    ]},
@@ -398,7 +456,7 @@ Internal`HandlerBlock[
       "RunChecks"           -> False,
       "Verbose"             -> False,
       "WorkingDirectory"    -> $wdE,
-      "FanData"             -> Automatic,
+      "FanData"             -> $fanData,
       "ComplexExponentMode" -> "Direct"],
     (* Quiet all messages EXCEPT vegasbudget — but the handler fires first,
        so Quiet only affects message printing, not handler interception. *)
@@ -417,7 +475,7 @@ If[!$budgetFired,
         "RunChecks"           -> False,
         "Verbose"             -> False,
         "WorkingDirectory"    -> $wdE,
-        "FanData"             -> Automatic,
+        "FanData"             -> $fanData,
         "ComplexExponentMode" -> "Direct"],
       All];
     If[AssociationQ[resE] &&
