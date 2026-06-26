@@ -428,6 +428,140 @@ Print[];
 
 
 (* ============================================================================
+   41-C: Lifting x Divergence  (planAXpDIV.md §7 — the capability that removes
+         known-limitation L2 / plan.md N3 "lifting and divergence are mutually
+         exclusive per call").
+         I(eps) = Int_0^inf dx1 dx2  x1^{-1+eps}(1 + x1 x2 + 10^6 x1^2 + x2^2)^{-2}
+
+   The denominator carries an extreme coefficient 10^6 on x1^2 (triggers lifting,
+   ExponentVector {2,0}, k=3 so z0 = 100 exactly) AND the monomial x1^{-1+eps}
+   produces a simple 1/eps pole at x1->0.  After lifting + delta-resolution the
+   pole lives in surviving atilde directions; the divergent lifted sectors all
+   have HasConstantTerm=True (clean atilde poles, no polynomial-zero poles), so
+   BOTH the IBP and Subtraction routes resolve it.
+
+   Analytic pole: at x1->0, P -> 1+x2^2, so
+       pole = Int_0^inf (1+x2^2)^{-2} dx2 = pi/4 = 0.7853982.
+
+   Oracles (>=2, plan.md §8.5):
+     - IBP route        : EvaluateTropicalMC[liftedSpec, fan, LiftData, Method->IBP]
+     - Subtraction route: LaurentFromSubtraction[liftedSpec, fan, LiftData] (eps-fit)
+     - NIntegrate of the ORIGINAL at epsStar = 0.01.
+   PASS: pole agreement across routes < 0.05 AND both poles within 5% of pi/4;
+         reconstructed F(epsStar) = pole/epsStar + finite within 2% of NIntegrate
+         for both routes.
+   ============================================================================ *)
+
+Print["================================================================"];
+Print["  CC41-C: Lifting x Divergence  (removes L2 / plan.md N3)"];
+Print["  I(eps)=Int dx1 dx2 x1^{-1+eps}(1+x1 x2+10^6 x1^2+x2^2)^{-2}"];
+Print["================================================================"];
+
+Module[
+  {eps, vars, spec, rules, lift, liftedSpec, liftData, verts, fan,
+   epsStar, nMC, nSub, niRef,
+   ibpRes, subRes, poleIbp, finIbp, poleSub, finSub,
+   recIbp, recSub, tolPole, tolPi, tolF, wdirC},
+
+  eps  = Symbol["eps41c"];
+  vars = {x[1], x[2]};
+  spec = <|
+    "Polynomials"         -> {1 + x[1] x[2] + 10^6 x[1]^2 + x[2]^2},
+    "MonomialExponents"   -> {-1 + eps, 0},
+    "PolynomialExponents" -> {-2},
+    "Variables"           -> vars,
+    "KinematicSymbols"    -> {},
+    "RegulatorSymbol"     -> eps
+  |>;
+  rules = {<|"PolyIndex" -> 1, "ExponentVector" -> {2, 0}, "k" -> 3|>};
+
+  wdirC = FileNameJoin[{$pkgRoot, "TEST", "INTERFILES", "cc41c"}];
+  Quiet[CreateDirectory[wdirC, CreateIntermediateDirectories -> True],
+    {CreateDirectory::eexist}];
+
+  (* Lift + build the (n+1)-dim fan (shared by both routes). *)
+  lift = LiftCoefficients[spec, rules];
+  If[!AssociationQ[lift],
+    Print["CC41 FAIL [41-C lift] LiftCoefficients returned: ", lift];
+    $cc41AllPass = False; AppendTo[$cc41AnyFail, "41-C lift"]; Goto[$skip41C]];
+  liftedSpec = lift["LiftedSpec"]; liftData = lift["LiftData"];
+  verts = Quiet[PolytopeVertices[(Times @@ liftedSpec["Polynomials"])^(-1),
+                                 liftedSpec["Variables"]], TropicalFan::polymake];
+  fan   = Quiet[computeFanScaled[verts], TropicalFan::polymake];
+  If[!ListQ[fan] || Length[fan] < 2,
+    Print["CC41 FAIL [41-C fan] lifted fan build failed"];
+    $cc41AllPass = False; AppendTo[$cc41AnyFail, "41-C fan"]; Goto[$skip41C]];
+  Print["41-C: lifted fan built -- ", Length[fan[[2]]], " sectors, z0=", liftData["z0"]];
+
+  epsStar = 0.01; nMC = 500000; nSub = 400000;
+  tolPole = 0.05; tolPi = 0.05; tolF = 0.02;
+
+  niRef = Quiet @ NIntegrate[
+    (u1/(1-u1))^(-1+epsStar) *
+    (1 + (u1/(1-u1))(u2/(1-u2)) + 10^6 (u1/(1-u1))^2 + (u2/(1-u2))^2)^(-2) /
+    ((1-u1)^2 (1-u2)^2),
+    {u1, 0, 1}, {u2, 0, 1},
+    Method -> "GlobalAdaptive", PrecisionGoal -> 5, MaxRecursion -> 50];
+  Print["41-C: NIntegrate(eps*=", epsStar, ") = ", niRef];
+
+  (* ---- IBP route ---- *)
+  Print["41-C: IBP route (lifted, MC) ..."];
+  ibpRes = quietRun @ EvaluateTropicalMC[liftedSpec, fan, {{}},
+    "LiftData" -> liftData, "Method" -> "IBP", "Integrator" -> "MC",
+    "NSamples" -> nMC, "RunChecks" -> False, "Verbose" -> False,
+    "WorkingDirectory" -> wdirC];
+  If[!AssociationQ[ibpRes] || !KeyExistsQ[ibpRes, "Results"],
+    Print["CC41 FAIL [41-C IBP] returned: ", ibpRes];
+    $cc41AllPass = False; AppendTo[$cc41AnyFail, "41-C IBP"]; Goto[$skip41C]];
+  poleIbp = Re @ ibpRes["Results"][[1]]["PoleCoefficient"];
+  finIbp  = Re @ ibpRes["Results"][[1]]["FinitePart"];
+  Print["  IBP: pole = ", poleIbp, "  finite = ", finIbp];
+
+  (* ---- Subtraction route (LaurentFromSubtraction, pinned eps) ---- *)
+  Print["41-C: Subtraction route (lifted, MC) ..."];
+  subRes = quietRun @ LaurentFromSubtraction[liftedSpec, fan, {{}},
+    "LiftData" -> liftData, "EpsilonValues" -> {0.01, 0.02, 0.04},
+    "Integrator" -> "MC", "NSamples" -> nSub, "WorkingDirectory" -> wdirC];
+  If[!AssociationQ[subRes] || !KeyExistsQ[subRes, "Results"],
+    Print["CC41 FAIL [41-C Sub] returned: ", subRes];
+    $cc41AllPass = False; AppendTo[$cc41AnyFail, "41-C Sub"]; Goto[$skip41C]];
+  poleSub = Re @ subRes["Results"][[1]]["Pole"];
+  finSub  = Re @ subRes["Results"][[1]]["Finite"];
+  Print["  Sub: pole = ", poleSub, "  finite = ", finSub];
+
+  recIbp = poleIbp/epsStar + finIbp;
+  recSub = poleSub/epsStar + finSub;
+  Print["  reconstructed F(eps*): IBP=", recIbp, " Sub=", recSub,
+        " (NInt=", niRef, ", pi/4=", N[Pi/4], ")"];
+
+  cc41Assert["41-C pole IBP vs Sub agreement",
+    NumericQ[poleIbp] && NumericQ[poleSub] && Abs[poleIbp - poleSub] < tolPole,
+    "agree<" <> ToString[tolPole],
+    "|diff|=" <> ToString[sci @ Abs[poleIbp - poleSub]]];
+
+  cc41Assert["41-C pole ~ pi/4 (both routes)",
+    NumericQ[poleIbp] && NumericQ[poleSub] &&
+      Abs[(poleIbp - Pi/4)/(Pi/4)] < tolPi && Abs[(poleSub - Pi/4)/(Pi/4)] < tolPi,
+    "rel<" <> ToString[tolPi] <> " vs pi/4",
+    "IBP=" <> ToString[sci[poleIbp]] <> " Sub=" <> ToString[sci[poleSub]]];
+
+  cc41Assert["41-C IBP F(eps*) vs NIntegrate",
+    NumericQ[recIbp] && NumericQ[niRef] && Abs[(recIbp - niRef)/niRef] < tolF,
+    "rel-err<" <> ToString[tolF],
+    "rel-err=" <> ToString[sci @ Abs[(recIbp - niRef)/niRef]]];
+
+  cc41Assert["41-C Sub F(eps*) vs NIntegrate",
+    NumericQ[recSub] && NumericQ[niRef] && Abs[(recSub - niRef)/niRef] < tolF,
+    "rel-err<" <> ToString[tolF],
+    "rel-err=" <> ToString[sci @ Abs[(recSub - niRef)/niRef]]];
+
+  Label[$skip41C];
+];
+
+Print[];
+
+
+(* ============================================================================
    Final summary
    ============================================================================ *)
 

@@ -377,9 +377,95 @@ Module[
 ];
 Print[];
 
+(* ── 4b. Sub-case D: LIFTED + DIVERGENT exact input (planAXpDIV.md §5) ──
+   A lifted sector that also carries a 1/eps pole must stay FreeQ[_Real] through
+   the symbolic decomposition: NewExponents (eps-carrying, exact), MinExponents,
+   PrefactorBase (= (|detM|/|mp|) z0^(ap/mp-1), exact — z0=100 here), ClearedPolys,
+   and the IBP Laurent fields incl. DLogPrefactor (= d/deps log PrefactorBase|0,
+   here -Log[10^6], FreeQ[_Real]).  Exact integer coefficients -> no stray N[]. *)
+Print["========================================================"];
+Print["CC43  Sub-case D: lifted+divergent n=2, exact input (Barrier A/B)"];
+Print["========================================================"];
+
+Module[
+  {eps, vars, spec, rules, lift, ls, ld, verts, fan, dv, sl,
+   divSD, convSD, ibpResults, passes = {}, anyFail = False},
+
+  eps  = \[Epsilon];
+  vars = {x[1], x[2]};
+  (* toy B: extreme coeff 10^6 (lift {2,0} k=3, z0=100) + x1^{-1+eps} pole *)
+  spec = <|
+    "Polynomials"         -> {1 + x[1] x[2] + 10^6 x[1]^2 + x[2]^2},
+    "MonomialExponents"   -> {-1 + eps, 0},
+    "PolynomialExponents" -> {-2},
+    "Variables"           -> vars,
+    "KinematicSymbols"    -> {},
+    "RegulatorSymbol"     -> eps
+  |>;
+  rules = {<|"PolyIndex" -> 1, "ExponentVector" -> {2, 0}, "k" -> 3|>};
+
+  lift = LiftCoefficients[spec, rules];
+  If[!AssociationQ[lift],
+    Print["CC43 FAIL  Sub-case D: LiftCoefficients failed"]; $cc43D = False; Goto[endD]];
+  ls = lift["LiftedSpec"]; ld = lift["LiftData"];
+  verts = Quiet[PolytopeVertices[(Times @@ ls["Polynomials"])^(-1), ls["Variables"]],
+                TropicalFan::polymake];
+  fan = Quiet[computeFanScaled[verts], TropicalFan::polymake];
+  If[!ListQ[fan] || Length[fan] < 2,
+    Print["CC43 FAIL  Sub-case D: lifted fan build failed"]; $cc43D = False; Goto[endD]];
+  {dv, sl} = fan;
+
+  Module[{all = Table[
+      Quiet@ProcessSectorLifted[ls, dv, sl[[s]], s, ld, "Eps" -> eps],
+      {s, Length[sl]}]},
+    all     = Select[all, AssociationQ];
+    all     = Select[all, !KeyExistsQ[#, "EmptyDomain"] &];
+    divSD   = Select[all, TrueQ[#["IsDivergent"]] &];
+    convSD  = Select[all, !TrueQ[#["IsDivergent"]] &];
+  ];
+  Print["  Lifted fan: ", Length[sl], " sectors -> ", Length[convSD],
+        " conv, ", Length[divSD], " div  (z0=", ld["z0"], ")"];
+  If[Length[divSD] == 0,
+    Print["CC43 FAIL  Sub-case D: expected >=1 divergent lifted sector, got 0"];
+    $cc43D = False; Goto[endD]];
+
+  (* divergent lifted sector pre-IBP fields, incl. PrefactorBase (the new field) *)
+  Do[
+    Module[{sd = divSD[[s]], lab},
+      lab = "lifted-div-sector-" <> ToString[sd["ConeIndex"]];
+      AppendTo[passes, reportExact["NewExponents", sd["NewExponents"], lab]];
+      AppendTo[passes, reportExact["MinExponents", sd["MinExponents"], lab]];
+      AppendTo[passes, reportExact["PrefactorBase", sd["PrefactorBase"], lab]];
+      AppendTo[passes, reportExact["ClearedPolys", sd["ClearedPolys"], lab]];
+    ], {s, Length[divSD]}];
+
+  (* IBP Laurent fields (incl. DLogPrefactor) on each divergent lifted sector *)
+  ibpResults = Table[IBPProcessSector[divSD[[s]], ls], {s, Length[divSD]}];
+  Do[
+    Module[{ibp = ibpResults[[s]], lab},
+      lab = "lifted-IBP-sector-" <> ToString[divSD[[s]]["ConeIndex"]];
+      If[ibp === $Failed,
+        Print["  NOTE: ", lab, " IBPProcessSector returned $Failed; skipping"],
+        AppendTo[passes, checkIBPResult[ibp, lab]];
+        If[KeyExistsQ[ibp, "DLogPrefactor"],
+          AppendTo[passes, reportExact["DLogPrefactor", ibp["DLogPrefactor"], lab]]]
+      ]
+    ], {s, Length[divSD]}];
+
+  anyFail = !And @@ passes;
+  If[!anyFail,
+    Print["CC43 PASS  Sub-case D  lifted+divergent: all checked fields FreeQ[_Real] ",
+          "(NewExponents/PrefactorBase/ClearedPolys + IBP boundary/terms/DLogPrefactor)"],
+    Print["CC43 FAIL  Sub-case D  expected=FreeQ[_Real] in all fields  got=see above"]
+  ];
+  $cc43D = !anyFail;
+  Label[endD]
+];
+Print[];
+
 (* ── 5. Summary ─────────────────────────────────────────────────────── *)
 Module[{results, nPass, nFail},
-  results = {$cc43A, $cc43B, $cc43C};
+  results = {$cc43A, $cc43B, $cc43C, $cc43D};
   nPass = Count[results, True];
   nFail = Count[results, False];
 
@@ -392,6 +478,8 @@ Module[{results, nPass, nFail},
         If[TrueQ[$cc43B], "PASS", "FAIL"]];
   Print["  Sub-case C (meta-test: guard sensitivity): ",
         If[TrueQ[$cc43C], "PASS", "FAIL"]];
+  Print["  Sub-case D (lifted+divergent, exact input): ",
+        If[TrueQ[$cc43D], "PASS", "FAIL"]];
   Print["--------------------------------------------------------"];
   If[nFail == 0,
     Print["CC43 PASS  all ", nPass, " sub-cases passed",

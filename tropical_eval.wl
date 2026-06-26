@@ -210,6 +210,8 @@ TropicalEval::liftcomplex = "ProcessSectorLifted: cone `1` — all candidate piv
 TropicalEval::liftdivergent = "ProcessSectorLifted: cone `1` — atilde `2` has a non-positive component after delta resolution; the lifted sector is divergent.  Lifting supports convergent integrals only (plan.md N3).";
 TropicalEval::liftfandim = "EvaluateTropicalMC with LiftData: the fan dimension is `1` but n+1 = `2` is required.  Supply the (n+1)-dimensional lifted fan.";
 TropicalEval::liftdegenerate = "EvaluateTropicalMCLifted: the lifted Newton polytope is lower-dimensional; automatic fan construction is not possible — supply an explicit complete simplicial fan via the \"FanData\" option.";
+TropicalEval::liftdivdomain = "ProcessSectorLifted: cone `1` — the divergent variable couples to the lifted domain constraint (ic_k != 0) for every admissible pivot.  The 1/eps pole and the domain face interact (Case B, planAXpDIV.md §3); a log-space remap is required (future work).  Aborting ($Failed).";
+TropicalEval::splitliftdiv = "EvaluateTropicalMC: SplitRealImag combined with lifting AND divergence is not yet supported (per-term MonoFactorLog re-derivation is future work, planAXpDIV.md §4.5).  Use ComplexExponentMode -> \"Direct\" (always correct) for lifted+divergent complex-exponent integrals.";
 
 (* ---- High-D VEGAS sizing guard (lift_error_log L1, plan.md §6.5) ---- *)
 TropicalEval::vegasbudget = "VEGAS budget too small: NSamples=`1` per sector is below 20*NStart=`2` (max sector dim `3`, resolved NStart=`4`).  In high dimension the adaptive grid never resolves and VEGAS can return a confidently-wrong value with a tight (lying) error bar.  Raise \"NSamples\" (or lower \"VegasNStart\") and cross-check against a reference rather than trusting the VEGAS error bar.";
@@ -452,6 +454,11 @@ Module[
         "TransformedPolys"    -> transformedPolys,
         "ClearedPolys"        -> clearedPolys,
         "Prefactor"           -> Abs[detM],
+        (* PrefactorBase (planAXpDIV.md §4.1, Barrier B.1): the sector prefactor
+           BEFORE dividing by Prod(effective exponents).  For an unlifted sector
+           this is Abs[detM]; the divergence routines read it via
+           Lookup[sd,"PrefactorBase",Abs[detM]], so unlifted output is unchanged. *)
+        "PrefactorBase"       -> Abs[detM],
         "IsDivergent"         -> True,
         "DivergentVariable"   -> divVar,
         "Dimension"           -> n,
@@ -494,6 +501,7 @@ Module[
     "ClearedPolys"         -> clearedPolys,
     "FlattenedPolys"       -> flattenedPolys,
     "Prefactor"            -> prefactor,
+    "PrefactorBase"        -> Abs[detM],
     "MonoFactorLog"        -> monoFactorLog,
     "IsDivergent"          -> False,
     "DivergentVariable"    -> 0,
@@ -992,7 +1000,12 @@ Module[
    integrand.  tryPivot[p] is cached (memoized) so each pivot is computed once.
    ============================================================================ *)
 
-Options[ProcessSectorLifted] = {"Verbose" -> False};
+(* "Eps" (planAXpDIV.md §4.3): the regulator symbol.  When None (default,
+   convergent lifting) the classification/ranking reduce EXACTLY to the pre-L2
+   behaviour, so every existing lifted/convergent result is byte-identical.
+   When a symbol, atilde is classified at eps->0 and a single divergent slot is
+   permitted, emitting a divergent lifted SectorData (Barrier A removed). *)
+Options[ProcessSectorLifted] = {"Verbose" -> False, "Eps" -> None};
 
 ProcessSectorLifted[liftedSpec_Association, dualVertices_List,
                     simplex_List, coneIndex_Integer,
@@ -1003,7 +1016,8 @@ Module[
    pivotP, mp, ap, mOtherVec, atildeVals, reclearedPolys,
    allOtherZero, domainClass, logZ0,
    fsResult, flattenedPolys, prefactor, prefactorBase,
-   monoFactorLogLifted, isRealPos},
+   monoFactorLogLifted, eps, a0fn, classDir, pivotClass,
+   classifyDomainFor, candClass, bestCI, bestDom, divDir},
 
   verbose = OptionValue["Verbose"];
 
@@ -1074,32 +1088,90 @@ Module[
   (* Memoize so each pivot is computed exactly once (plan.md §5.5). *)
   pivotCache[p_] := pivotCache[p] = tryPivot[p];
 
-  (* §6.7 EXACT realness predicate: atilde_j is real (Im exactly 0) AND
-     Re[atilde_j] > 0 — decided exactly, never by a 10^-12 tolerance.  A
-     complex atilde routes deterministically to liftcomplex. *)
-  isRealPos[av_] := TrueQ[PossibleZeroQ[Im[av]]] && TrueQ[Re[av] > 0];
+  (* ---- planAXpDIV.md §4.3: epsilon-aware classification (§6.7 EXACT) ----
+     Each post-delta effective exponent atilde_j is classified at eps->0 with
+     PossibleZeroQ / Re[..]>0 — never an N/tolerance test:
+       "complex"     Im[a0_j] not provably zero               -> liftcomplex
+       "convergent"  real, Re[a0_j] > 0
+       "divergent"   real, Re[a0_j] <= 0   (only with a regulator present)
+       "bad"         real, Re[a0_j] <= 0, but NO regulator to subtract
+     With eps===None this reduces EXACTLY to the old isRealPos test (only
+     all-convergent pivots are admissible), so the convergent path is unchanged. *)
+  eps = OptionValue["Eps"];
+  a0fn[av_] := If[eps =!= None, av /. eps -> 0, av];
+  classDir[av_] := Module[{a0 = a0fn[av]},
+    Which[
+      !TrueQ[PossibleZeroQ[Im[a0]]],       "complex",
+      TrueQ[Re[a0] > 0],                    "convergent",
+      eps =!= None && TrueQ[Re[a0] <= 0],   "divergent",
+      True,                                 "bad"
+    ]];
+  (* admissibility + divergent slot + c_k for one pivot's atilde *)
+  pivotClass[res_] := Module[{cls, ndiv, kk, ckk},
+    cls  = classDir /@ res["atilde"];
+    ndiv = Count[cls, "divergent"];
+    Which[
+      MemberQ[cls, "complex"], <|"adm" -> False, "complex" -> True,  "divDir" -> 0|>,
+      MemberQ[cls, "bad"],     <|"adm" -> False, "complex" -> False, "divDir" -> 0|>,
+      ndiv > 1,                <|"adm" -> False, "complex" -> False, "divDir" -> 0|>,
+      ndiv == 0,               <|"adm" -> True,  "complex" -> False, "divDir" -> 0, "ck" -> 0|>,
+      True,
+        kk  = First @ Flatten @ Position[cls, "divergent"];
+        ckk = D[res["atilde"][[kk]], eps] /. eps -> 0;
+        If[TrueQ[ckk == 0] || (NumericQ[ckk] && ckk == 0),
+          (* c_k = 0: higher-order pole, not a simple 1/eps -> refuse (badck). *)
+          <|"adm" -> False, "complex" -> False, "divDir" -> 0|>,
+          <|"adm" -> True,  "complex" -> False, "divDir" -> kk, "ck" -> ckk|>]
+    ]];
+  (* domain classification as a pure function (mirrors Step 4; NO early return).
+     empty/None/constrained is decided from eps-free data (mOther signs, mp sign,
+     |z0|); only IndicatorCoeffs carry eps and are rebuilt safely on emission. *)
+  classifyDomainFor[res_] := Module[
+    {mO = res["mOther"], mpL = res["mp"], at = res["atilde"], aoz, cls},
+    aoz = And @@ (# == 0 & /@ mO);
+    cls = <|"LogZ0" -> Log[z0], "MP" -> mpL,
+            "IndicatorCoeffs" -> Table[mO[[jj]]/at[[jj]], {jj, n}]|>;
+    Which[
+      aoz,
+        <|"empty" -> TrueQ[N[z0^(1/mpL)] > 1], "class" -> None|>,
+      mpL > 0,
+        Which[
+          (And @@ (# >= 0 & /@ mO)) && N[z0] > 1,  <|"empty" -> True,  "class" -> None|>,
+          (And @@ (# <= 0 & /@ mO)) && N[z0] <= 1, <|"empty" -> False, "class" -> None|>,
+          True,                                    <|"empty" -> False, "class" -> cls|>],
+      True, (* mpL < 0 *)
+        Which[
+          (And @@ (# <= 0 & /@ mO)) && N[z0] < 1,  <|"empty" -> True,  "class" -> None|>,
+          (And @@ (# >= 0 & /@ mO)) && N[z0] >= 1, <|"empty" -> False, "class" -> None|>,
+          True,                                    <|"empty" -> False, "class" -> cls|>]
+    ]];
 
-  candidates = {};
+  (* ---- build admissible candidates with classification ---- *)
+  candClass = {};
   Do[
     If[mVec[[p]] != 0,
-      Module[{res = pivotCache[p]},
-        If[res =!= $Failed &&
-           And @@ (isRealPos /@ res["atilde"]),
-          AppendTo[candidates, res]
+      Module[{res = pivotCache[p], ci},
+        If[res =!= $Failed,
+          ci = pivotClass[res];
+          If[ci["adm"],
+            AppendTo[candClass, {res, ci, classifyDomainFor[res]}]
+          ]
         ]
       ]
     ],
     {p, n1}
   ];
 
-  If[candidates === {},
-    (* Any complex-atilde candidate => liftcomplex (decided exactly). *)
+  If[candClass === {},
+    (* No admissible pivot.  Complex atilde => liftcomplex (decided exactly);
+       otherwise liftnopivot (nested >1-divergent, badck, or — with no
+       regulator — an unregulated divergence). *)
     Module[{anyComplex = False},
       Do[
         If[mVec[[p]] != 0,
           Module[{res = pivotCache[p]},
             If[res =!= $Failed &&
-               AnyTrue[res["atilde"], (!TrueQ[PossibleZeroQ[Im[#]]]) &],
+               AnyTrue[res["atilde"], (!TrueQ[PossibleZeroQ[Im[a0fn[#]]]]) &],
               anyComplex = True
             ]
           ]
@@ -1115,7 +1187,7 @@ Module[
       pivotSummary = Table[
         If[mVec[[p]] != 0,
           Module[{res = pivotCache[p]},
-            If[res =!= $Failed, {p, mVec[[p]], N[res["atilde"]]}]
+            If[res =!= $Failed, {p, mVec[[p]], N[a0fn[res["atilde"]]]}]
           ],
           Nothing
         ],
@@ -1126,15 +1198,26 @@ Module[
     Return[$Failed]
   ];
 
-  (* AMENDED ranking (plan.md §6.2): (1) HasConstantTerm; (2) |mp|=1;
-     (3) max min_j Re[atilde].  Constant-term preservation is FIRST because
-     HasConstantTerm=False sectors can have infinite MC variance (§9 risk 1). *)
-  candidates = SortBy[candidates,
-    {-Boole[#["hasConst"]],
-     -Boole[Abs[#["mp"]] == 1],
-     -Min[Re[N[#["atilde"]]]]} &
-  ];
-  bestPivot = candidates[[1]];
+  (* ---- ranking (planAXpDIV.md §4.3) ----
+     (0) Case-A over Case-B: a divergent slot that couples to the lifted domain
+         face (Case B) yields a WRONG pole, so a decoupled (Case A) pivot must
+         win whenever one exists — a CORRECTNESS key, above the variance
+         heuristic.  For convergent / EmptyDomain pivots caseA is True (a
+         constant key), so it never reorders the convergent path: the unlifted
+         goldens and lifted-convergent output stay byte-identical (#25).
+     (1) HasConstantTerm; (2) |mp|=1; (3) max min_j Re[a0], a0 = atilde|_{eps->0}
+         (keeps the ranking real-valued even with a symbolic regulator). *)
+  candClass = SortBy[candClass,
+    Function[t,
+      Module[{res = t[[1]], ci = t[[2]], dom = t[[3]], cA},
+        cA = (ci["divDir"] === 0) || dom["empty"] || (dom["class"] === None) ||
+             TrueQ[res["mOther"][[ci["divDir"]]] == 0];
+        {-Boole[cA],
+         -Boole[res["hasConst"]],
+         -Boole[Abs[res["mp"]] == 1],
+         -Min[Re[N[a0fn[res["atilde"]]]]]}
+      ]]];
+  {bestPivot, bestCI, bestDom} = candClass[[1]];
 
   pivotP         = bestPivot["pivot"];
   mp             = bestPivot["mp"];
@@ -1142,63 +1225,51 @@ Module[
   mOtherVec      = bestPivot["mOther"];
   atildeVals     = bestPivot["atilde"];
   reclearedPolys = bestPivot["newPolys"];
+  divDir         = bestCI["divDir"];
 
   If[verbose,
     Print["  PSL cone ", coneIndex, ": pivot p=", pivotP,
-          " mp=", mp, " atilde=", N[atildeVals],
-          " HasConstantTerm=", bestPivot["hasConst"]]
+          " mp=", mp, " atilde0=", N[a0fn[atildeVals]],
+          " HasConstantTerm=", bestPivot["hasConst"],
+          " divDir=", divDir]
   ];
 
-  (* ---- Step 4: domain-constraint classification (plan.md §6.2) ---- *)
-  logZ0        = Log[z0];
-  allOtherZero = And @@ (# == 0 & /@ mOtherVec);
-
-  If[allOtherZero,
-    If[N[z0^(1/mp)] > 1,
-      Return[<|"EmptyDomain" -> True, "ConeIndex" -> coneIndex|>]
-    ];
-    domainClass = None;
-    ,
-    If[mp > 0,
-      If[And @@ (#>= 0 & /@ mOtherVec) && N[z0] > 1,
-        Return[<|"EmptyDomain" -> True, "ConeIndex" -> coneIndex|>]
-      ];
-      If[And @@ (#<= 0 & /@ mOtherVec) && N[z0] <= 1,
-        domainClass = None;
-        ,
-        domainClass = <|
-          "LogZ0"           -> logZ0,
-          "MP"              -> mp,
-          "IndicatorCoeffs" -> Table[mOtherVec[[jj]] / atildeVals[[jj]], {jj, n}]
-        |>
-      ],
-      (* mp < 0 *)
-      If[And @@ (#<= 0 & /@ mOtherVec) && N[z0] < 1,
-        Return[<|"EmptyDomain" -> True, "ConeIndex" -> coneIndex|>]
-      ];
-      If[And @@ (#>= 0 & /@ mOtherVec) && N[z0] >= 1,
-        domainClass = None;
-        ,
-        domainClass = <|
-          "LogZ0"           -> logZ0,
-          "MP"              -> mp,
-          "IndicatorCoeffs" -> Table[mOtherVec[[jj]] / atildeVals[[jj]], {jj, n}]
-        |>
-      ]
-    ]
+  (* ---- Step 4: domain-constraint classification (from the ranked pivot) ---- *)
+  logZ0 = Log[z0];
+  If[bestDom["empty"],
+    Return[<|"EmptyDomain" -> True, "ConeIndex" -> coneIndex|>]
   ];
+  domainClass = bestDom["class"];
 
-  (* ---- Step 5: flatten via FlattenSector ---- *)
-  prefactorBase = (Abs[detM] / Abs[mp]) * z0^(ap / mp - 1);
-  fsResult = FlattenSector[reclearedPolys, atildeVals, prefactorBase];
-
-  If[fsResult["IsDivergent"],
-    Message[TropicalEval::liftdivergent, coneIndex, atildeVals];
+  (* ---- Case-B refusal (planAXpDIV.md §3) ----
+     The divergent slot couples to the lifted domain face (ic_k != 0) and no
+     decoupled (Case A) pivot exists (the caseA-first ranking already preferred
+     one).  The 1/eps pole and the domain face interact; refuse cleanly
+     ($Failed); a log-space remap is documented future work. *)
+  If[divDir =!= 0 &&
+     !((domainClass === None) || TrueQ[mOtherVec[[divDir]] == 0]),
+    Message[TropicalEval::liftdivdomain, coneIndex];
     Return[$Failed]
   ];
 
-  flattenedPolys = fsResult["FlattenedPolys"];
-  prefactor      = fsResult["Prefactor"];
+  (* ---- Step 5: flatten the surviving coordinates ----
+     Convergent lifted sector: flatten now (byte-identical to the pre-L2 path).
+     Divergent lifted sector (planAXpDIV.md §4.3, Barrier A): do NOT pre-flatten
+     — the divergence routines flatten the non-divergent coordinates themselves
+     and the 1/eps pole lives in the surviving atilde slot divDir. *)
+  prefactorBase = (Abs[detM] / Abs[mp]) * z0^(ap / mp - 1);
+  If[divDir === 0,
+    fsResult = FlattenSector[reclearedPolys, atildeVals, prefactorBase];
+    If[fsResult["IsDivergent"],
+      Message[TropicalEval::liftdivergent, coneIndex, atildeVals];
+      Return[$Failed]
+    ];
+    flattenedPolys = fsResult["FlattenedPolys"];
+    prefactor      = fsResult["Prefactor"],
+    (* divergent: placeholders (not consumed by the divergence path) *)
+    flattenedPolys = None;
+    prefactor      = None
+  ];
 
   (* MonoFactorLog (plan.md §6.3 Fix B / lift_error_log L3), LIFTED case.
      log P_k = log(monomial factor) + log Q_k, where the augmented tropical
@@ -1224,7 +1295,45 @@ Module[
     ]
   ];
 
-  (* ---- Step 6: assemble full SectorData ---- *)
+  (* ---- Divergent lifted sector: emit a divergent SectorData (planAXpDIV.md
+     §4.3, Barrier A).  NewExponents carry eps so the pole machinery
+     (IdentifyDivergences / IBPReduceSector) eps-expands them; the divergence
+     routines flatten the non-divergent coordinates and reconstruct prefactors
+     from PrefactorBase.  DomainConstraint is the Case-A indicator at eps->0 with
+     the divergent slot forced to 0 (ic_divDir = 0, avoiding a 0/0 from the
+     vanishing atilde_divDir). ---- *)
+  If[divDir =!= 0,
+    Return[<|
+      "ConeIndex"           -> coneIndex,
+      "RayMatrix"           -> mMatrix,
+      "DetM"                -> detM,
+      "SelectedRays"        -> sdAug["SelectedRays"],
+      "RawExponents"        -> sdAug["RawExponents"],
+      "NewExponents"        -> atildeVals,
+      "MinExponents"        -> bestPivot["rcMin"],
+      "TransformedPolys"    -> clearedPolys,
+      "ClearedPolys"        -> reclearedPolys,
+      "PrefactorBase"       -> prefactorBase,
+      "MonoFactorLog"       -> monoFactorLogLifted,
+      "IsDivergent"         -> True,
+      "DivergentVariable"   -> divDir,
+      "Dimension"           -> n,
+      "PolynomialExponents" -> polyExps,
+      "MonomialExponents"   -> liftData["OriginalSpec"]["MonomialExponents"],
+      "DomainConstraint"    -> If[domainClass === None, None,
+        <|"LogZ0" -> domainClass["LogZ0"], "MP" -> domainClass["MP"],
+          "IndicatorCoeffs" -> Table[
+            If[jj === divDir, 0, (mOtherVec[[jj]]/atildeVals[[jj]]) /. eps -> 0],
+            {jj, n}]|>],
+      "LiftData"            -> liftData,
+      "PivotIndex"          -> pivotP,
+      "ZRow"                -> mVec,
+      "AugmentedA"          -> a,
+      "HasConstantTerm"     -> bestPivot["hasConst"]
+    |>]
+  ];
+
+  (* ---- Step 6: assemble full SectorData (convergent lifted sector) ---- *)
   <|
     "ConeIndex"           -> coneIndex,
     "RayMatrix"           -> mMatrix,
@@ -1237,6 +1346,10 @@ Module[
     "ClearedPolys"        -> reclearedPolys,
     "FlattenedPolys"      -> flattenedPolys,
     "Prefactor"           -> prefactor,
+    (* PrefactorBase (planAXpDIV.md §4.1, Barrier B.1): the lifted sector's
+       true prefactor base (Abs[detM]/Abs[mp]) z0^(ap/mp-1), NOT Abs[detM].
+       The divergence routines reconstruct prefactors from this. *)
+    "PrefactorBase"       -> prefactorBase,
     "MonoFactorLog"       -> monoFactorLogLifted,
     "IsDivergent"         -> False,
     "DivergentVariable"   -> 0,
@@ -1441,7 +1554,7 @@ Module[
 ProcessDivergentSector[sectorData_Association, integrandSpec_Association] :=
 Module[
   {eps, k, aVals, a0, a1, ck, n, polyExps,
-   clearedPolys, detM,
+   clearedPolys, detM, pfBase,
    B0, B1, simpPolys, fullPolys,
    g0FlatPolys, g0Prefactor, g0Avals,
    g1LogInsertions,
@@ -1466,6 +1579,9 @@ Module[
   a1     = divInfo["a1"];
   aVals  = sectorData["NewExponents"];  (* effective *)
   detM   = sectorData["DetM"];
+  (* PrefactorBase (planAXpDIV.md §4.1): Abs[detM] for unlifted sectors,
+     (Abs[detM]/Abs[mp]) z0^(ap/mp-1) for a lifted sector. *)
+  pfBase = Lookup[sectorData, "PrefactorBase", Abs[detM]];
 
   polyExps    = sectorData["PolynomialExponents"];
   clearedPolys = sectorData["ClearedPolys"];
@@ -1507,7 +1623,7 @@ Module[
       {j, Length[simpPolys]}
     ];
 
-    g0Prefactor = Abs[detM] / (Times @@ g0aVals);
+    g0Prefactor = pfBase / (Times @@ g0aVals);
     g0Avals = g0aVals;
 
     (* G1 log insertion factors *)
@@ -1568,7 +1684,7 @@ Module[
       {j, Length[simpPolys]}
     ];
 
-    remPrefactor = Abs[detM] / (Times @@ remAvals);
+    remPrefactor = pfBase / (Times @@ remAvals);
 
     remainderData = <|
       "FullPolys"     -> remFlatFullPolys,
@@ -1610,7 +1726,11 @@ Module[
     "MinExponents"        -> sectorData["MinExponents"],
     "PolynomialExponents" -> polyExps,
     "MonomialExponents"   -> sectorData["MonomialExponents"],
-    "RawExponents"        -> sectorData["RawExponents"]
+    "RawExponents"        -> sectorData["RawExponents"],
+    (* Lifted-sector metadata (planAXpDIV.md §4.2): propagated so the G0/G1/rem
+       codegen and the validators carry the domain indicator.  None for unlifted
+       sectors -> byte-identical emitted C++ (#25). *)
+    "DomainConstraint"    -> Lookup[sectorData, "DomainConstraint", None]
   |>
 ];
 
@@ -1628,7 +1748,7 @@ Module[
   {eps, n, k, ck, a0, a1, aVals, polyExps,
    kinRules, epsRules, fullRules,
    clearedPolys, simpPolys, minExps,
-   detM, yVars,
+   detM, pfBase, domC, yVars,
    originalIntegral, g0Val, g1Val, remVal,
    divContrib, reconstructed, relError,
    rawAVals, B0, B1},
@@ -1643,6 +1763,9 @@ Module[
   rawAVals = sectorData["RawExponents"];
   polyExps = sectorData["PolynomialExponents"];
   detM     = sectorData["DetM"];
+  (* PrefactorBase (planAXpDIV.md §4.1) + lifted DomainConstraint (§4.2). *)
+  pfBase   = Lookup[sectorData, "PrefactorBase", Abs[detM]];
+  domC     = Lookup[sectorData, "DomainConstraint", None];
   minExps  = sectorData["MinExponents"];
 
   kinRules = testKinematics;
@@ -1674,12 +1797,14 @@ Module[
       ],
       {j, Length[clearedPolys]}
     ];
-    integrand = Abs[detM] *
+    integrand = (pfBase /. fullRules) *
       Exp[Total[(aNum - 1) * Log /@ yVars]] *
       Times @@ MapThread[
         Function[{pv, be}, Exp[be * Log[pv]]],
         {polyValsExpr, polyExps /. fullRules}
       ];
+    (* lifted-sector domain indicator over all n coords (planAXpDIV.md §4.2) *)
+    integrand = integrand * liftedDomainBooleWL[domC, yVars];
 
     originalIntegral = Quiet@NIntegrate[
       integrand,
@@ -1714,12 +1839,15 @@ Module[
       {j, Length[simpPolys]}
     ];
 
-    g0Integrand = Abs[detM] *
+    g0Integrand = (pfBase /. fullRules) *
       Exp[Total[(g0aNum - 1) * Log /@ g0yVars]] *
       Times @@ MapThread[
         Function[{pv, be}, Exp[be * Log[pv]]],
         {g0PolyVals, B0}
       ];
+    (* domain indicator over the n-1 non-divergent coords (drop slot k, §4.2) *)
+    g0Integrand = g0Integrand *
+      liftedDomainBooleWL[dropDivVarFromDomain[domC, k], g0yVars];
 
     g0Val = Quiet@NIntegrate[
       g0Integrand,
@@ -1752,7 +1880,7 @@ Module[
       {j, Length[simpPolys]}
     ];
 
-    g1BaseIntegrand = Abs[detM] *
+    g1BaseIntegrand = (pfBase /. fullRules) *
       Exp[Total[(g1aNum - 1) * Log /@ g1yVars]] *
       Times @@ MapThread[
         Function[{pv, be}, Exp[be * Log[pv]]],
@@ -1769,7 +1897,8 @@ Module[
         {j, Length[polyExps]}
       ]];
 
-    g1Integrand = g1BaseIntegrand * logInsertionSum;
+    g1Integrand = g1BaseIntegrand * logInsertionSum *
+      liftedDomainBooleWL[dropDivVarFromDomain[domC, k], g1yVars];
 
     g1Val = Quiet@NIntegrate[
       g1Integrand,
@@ -1825,9 +1954,10 @@ Module[
         {simpPolyVals, B0}
       ];
 
-    remIntegrand = Abs[detM] *
+    remIntegrand = (pfBase /. fullRules) *
       Exp[Total[(remAnum - 1) * Log /@ remYVars]] *
-      bracket;
+      bracket *
+      liftedDomainBooleWL[domC, remYVars];
 
     remVal = Quiet@NIntegrate[
       remIntegrand,
@@ -2098,6 +2228,52 @@ normalizeIntegrator[s_] := Switch[s,
    or a log-insertion factor).  resultVar is the C++ lvalue ("result",
    "g0_val", "base_val").  Reproduces the Phase-1 bytes exactly.
    -------------------------------------------------------------------------- *)
+(* emitDomainIndicatorCpp (planAXpDIV.md §4.2): the lifted-sector domain
+   indicator C++ block (a half-space Boole on log_y[]).  Factored out of
+   emitBaseFuncBody so the hand-written remainder integrand can reuse it
+   verbatim.  Returns "" for None, so the unlifted path is byte-identical (#25).
+   The emitted bytes are identical to the previous inline block. *)
+emitDomainIndicatorCpp[None, _] := "";
+emitDomainIndicatorCpp[dc_Association, paramMap_Association] :=
+Module[{logZ0str, mpStr, icList, icTerms, sumStr},
+  logZ0str = mmaToCInternal[N[dc["LogZ0"]], paramMap];
+  mpStr    = mmaToCInternal[N[dc["MP"]], paramMap];
+  icList   = N[dc["IndicatorCoeffs"]];
+  icTerms  = Table[
+    mmaToCInternal[icList[[i]], paramMap] <>
+    " * log_y[" <> ToString[i - 1] <> "]",
+    {i, Length[icList]}
+  ];
+  sumStr = If[Length[icTerms] == 0, "0.0", StringRiffle[icTerms, " + "]];
+  "    // lifted-sector domain indicator\n" <>
+  "    double log_ypstar = (" <> logZ0str <>
+    " - (" <> sumStr <> ")) * (1.0/" <> mpStr <> ");\n" <>
+  "    if (log_ypstar > 0.0) return cx(0.0, 0.0);\n\n"
+];
+
+(* dropDivVarFromDomain (planAXpDIV.md §4.2): for a lifted DIVERGENT sector, the
+   G0 / IBP-boundary integrands run over the n-1 non-divergent coordinates, so
+   the domain indicator must drop the divergent slot k.  In Case A (the only case
+   ProcessSectorLifted emits) ic_k = 0, so this just removes a zero entry and
+   re-indexes the survivors to the non-divergent ordering. *)
+dropDivVarFromDomain[None, _] := None;
+dropDivVarFromDomain[dc_Association, k_Integer] := <|
+  "LogZ0"           -> dc["LogZ0"],
+  "MP"              -> dc["MP"],
+  "IndicatorCoeffs" -> Drop[dc["IndicatorCoeffs"], {k}]
+|>;
+
+(* liftedDomainBooleWL (planAXpDIV.md §4.2): the WL-side Boole factor that the
+   NIntegrate validators (ValidateSubtraction / ValidateIBP) multiply into the
+   reconstructed sector integral, mirroring ValidateLiftedDecomposition.  Returns
+   1 for None, so unlifted validation is unchanged.  vv must be in the same
+   coordinate order as dc["IndicatorCoeffs"]. *)
+liftedDomainBooleWL[None, _] := 1;
+liftedDomainBooleWL[dc_Association, vv_List] := Module[
+  {lz = N[dc["LogZ0"]], mp = N[dc["MP"]], ic = N[dc["IndicatorCoeffs"]]},
+  Boole[(lz - Total[ic * (Log /@ vv)]) / mp <= 0]
+];
+
 emitBaseFuncBody[funcName_String, comment_String, resultVar_String,
                  flatPolys_List, polyExps_List, prefactor_, dim_Integer,
                  paramMap_Association, domainConstraint_: None,
@@ -2119,28 +2295,10 @@ Module[{funcCode, useSplit},
   funcCode = funcCode <>
     "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
 
-  (* Lifted-sector domain indicator (plan.md §3.3 / §6.2).  Only emitted when a
+  (* Lifted-sector domain indicator (planAXpDIV.md §4.2).  Only emitted when a
      DomainConstraint is present; for the unlifted path (domainConstraint===None)
-     this block is skipped, keeping the emitted C++ byte-identical (#25). *)
-  If[domainConstraint =!= None,
-    Module[{dc = domainConstraint, logZ0str, mpStr, icList, icTerms, sumStr},
-      logZ0str = mmaToCInternal[N[dc["LogZ0"]], paramMap];
-      mpStr    = mmaToCInternal[N[dc["MP"]], paramMap];
-      icList   = N[dc["IndicatorCoeffs"]];
-      icTerms  = Table[
-        mmaToCInternal[icList[[i]], paramMap] <>
-        " * log_y[" <> ToString[i - 1] <> "]",
-        {i, Length[icList]}
-      ];
-      sumStr = If[Length[icTerms] == 0, "0.0", StringRiffle[icTerms, " + "]];
-      funcCode = funcCode <> "    // lifted-sector domain indicator\n";
-      funcCode = funcCode <>
-        "    double log_ypstar = (" <> logZ0str <>
-        " - (" <> sumStr <> ")) * (1.0/" <> mpStr <> ");\n";
-      funcCode = funcCode <>
-        "    if (log_ypstar > 0.0) return cx(0.0, 0.0);\n\n";
-    ]
-  ];
+     emitDomainIndicatorCpp returns "", keeping the emitted C++ byte-identical (#25). *)
+  funcCode = funcCode <> emitDomainIndicatorCpp[domainConstraint, paramMap];
 
   Do[
     funcCode = funcCode <>
@@ -2304,7 +2462,11 @@ Module[
           "G0 for divergent sector " <> ToString[dd["ConeIndex"]],
           "result",
           dd["G0FlatPolys"], dd["G0PolyExponents"],
-          dd["G0Prefactor"], dd["G0Dimension"], paramMap];
+          dd["G0Prefactor"], dd["G0Dimension"], paramMap,
+          (* lifted-sector domain indicator over the n-1 non-divergent coords
+             (planAXpDIV.md §4.2); None for unlifted -> byte-identical (#25). *)
+          dropDivVarFromDomain[Lookup[dd, "DomainConstraint", None],
+                               dd["DivergentVariable"]]];
         funcCode = funcCode <> "    return result;\n}\n";
         AppendTo[integrandFuncs, funcCode];
         AppendTo[integrandDims, dd["G0Dimension"]];
@@ -2323,7 +2485,9 @@ Module[
           "G1 for divergent sector " <> ToString[dd["ConeIndex"]],
           "g0_val",
           dd["G0FlatPolys"], dd["G0PolyExponents"],
-          dd["G0Prefactor"], dd["G0Dimension"], paramMap];
+          dd["G0Prefactor"], dd["G0Dimension"], paramMap,
+          dropDivVarFromDomain[Lookup[dd, "DomainConstraint", None],
+                               dd["DivergentVariable"]]];
         funcCode = funcCode <>
           emitLogTail[logIns["VariableTerms"], logIns["PolynomialTerms"],
                       paramMap, True];
@@ -2361,6 +2525,12 @@ Module[
           "    for (int i = 0; i < " <> ToString[remDim] <> "; i++)\n";
         funcCode = funcCode <>
           "        log_y[i] = (y[i] > 1e-300) ? std::log(y[i]) : -700.0;\n\n";
+
+        (* Lifted-sector domain indicator over all n coords (planAXpDIV.md §4.2);
+           the remainder is full-n-dim so no slot is dropped.  None -> ""
+           (byte-identical for unlifted, #25). *)
+        funcCode = funcCode <>
+          emitDomainIndicatorCpp[Lookup[dd, "DomainConstraint", None], paramMap];
 
         funcCode = funcCode <> "    // Full polynomials\n";
         Do[
@@ -2447,7 +2617,11 @@ Module[
             "IBP boundary base, sector " <> ToString[ibpSD["ConeIndex"]],
             "result",
             bndData["FlatPolys"], bndData["PolyExponents"],
-            bndData["Prefactor"], bndData["Dimension"], paramMap];
+            bndData["Prefactor"], bndData["Dimension"], paramMap,
+            (* boundary is at y_k=1 over the n-1 non-divergent coords:
+               drop the divergent slot from the domain indicator (§4.2). *)
+            dropDivVarFromDomain[Lookup[ibpSD, "DomainConstraint", None],
+                                 ibpSD["DivergentVariable"]]];
           funcCode = funcCode <> "    return result;\n}\n";
           AppendTo[integrandFuncs, funcCode];
           AppendTo[integrandDims, bndData["Dimension"]];
@@ -2464,7 +2638,9 @@ Module[
             "IBP boundary log, sector " <> ToString[ibpSD["ConeIndex"]],
             "base_val",
             bndData["FlatPolys"], bndData["PolyExponents"],
-            bndData["Prefactor"], bndData["Dimension"], paramMap];
+            bndData["Prefactor"], bndData["Dimension"], paramMap,
+            dropDivVarFromDomain[Lookup[ibpSD, "DomainConstraint", None],
+                                 ibpSD["DivergentVariable"]]];
           funcCode = funcCode <>
             emitLogTail[logIns["VariableTerms"], logIns["PolynomialTerms"],
                         paramMap, True];
@@ -2491,7 +2667,10 @@ Module[
                 ToString[ibpSD["ConeIndex"]],
               "result",
               termData["FlatPolys"], termData["PolyExponents"],
-              termData["Prefactor"], termData["Dimension"], paramMap];
+              termData["Prefactor"], termData["Dimension"], paramMap,
+              (* IBP terms are full-n-dim (y_k still integrated): full domain
+                 indicator, no slot dropped (§4.2). *)
+              Lookup[ibpSD, "DomainConstraint", None]];
             funcCodeBase = funcCodeBase <> "    return result;\n}\n";
             AppendTo[integrandFuncs, funcCodeBase];
             AppendTo[integrandDims, termData["Dimension"]];
@@ -2504,7 +2683,8 @@ Module[
                 ToString[ibpSD["ConeIndex"]],
               "base_val",
               termData["FlatPolys"], termData["PolyExponents"],
-              termData["Prefactor"], termData["Dimension"], paramMap];
+              termData["Prefactor"], termData["Dimension"], paramMap,
+              Lookup[ibpSD, "DomainConstraint", None]];
             funcCodeLog = funcCodeLog <>
               emitLogTail[logIns["VariableTerms"], logIns["PolynomialTerms"],
                           paramMap, False];
@@ -3578,9 +3758,23 @@ Module[
      sectors) is unaffected: Automatic resolves to "None" and falls through. *)
   Module[{routeToIBP},
     routeToIBP = Which[
-      (* Lifting and divergence are mutually exclusive (plan.md N3): never
-         route a lifted call to the IBP/divergence path. *)
-      isLifted, False,
+      (* Lifted + divergence (planAXpDIV.md §4.4, Barrier C): route the lifted
+         call to the (now lifting-aware) IBP path when a regulator is present,
+         eps is NOT pinned to a value (a pinned eps is the convergent
+         LaurentFromSubtraction route), and some lifted sector is divergent.
+         Method "None"/"Subtraction" stay in this driver. *)
+      isLifted,
+        Which[
+          method === "None" || method === "Subtraction", False,
+          epsVal =!= None || eps === None, False,
+          method === "IBP", True,
+          method === Automatic,
+            AnyTrue[
+              Table[ProcessSectorLifted[liftedSpec, fanData[[1]], fanData[[2, s]],
+                      s, liftData, "Eps" -> eps], {s, Length[fanData[[2]]]}],
+              (AssociationQ[#] && TrueQ[#["IsDivergent"]]) &],
+          True, False
+        ],
       method === "IBP", True,
       method === "None" || method === "Subtraction", False,
       method === Automatic,
@@ -3590,6 +3784,12 @@ Module[
           (AssociationQ[#] && TrueQ[#["IsDivergent"]]) &],
       True, False
     ];
+    (* SplitRealImag x lift x divergence is future work (planAXpDIV.md §4.5):
+       the per-IBP-term MonoFactorLog re-derivation is not implemented.  Refuse
+       cleanly rather than emit a silently-wrong oscillatory phase. *)
+    If[isLifted && routeToIBP && cxSplit,
+      Message[TropicalEval::splitliftdiv];  Return[$Failed]
+    ];
     If[routeToIBP,
       Return[evaluateTropicalIBPDriver[integrandSpec, fanData, kinematicPoints,
         "NSamples" -> nSamples, "NThreads" -> nThreads,
@@ -3598,7 +3798,8 @@ Module[
         "VegasEpsRel" -> OptionValue["VegasEpsRel"],
         "VegasEpsAbs" -> OptionValue["VegasEpsAbs"],
         "VegasSeed" -> OptionValue["VegasSeed"],
-        "CubaMaxComp" -> OptionValue["CubaMaxComp"]]]
+        "CubaMaxComp" -> OptionValue["CubaMaxComp"],
+        "LiftData" -> If[isLifted, liftData, None]]]
     ]
   ];
 
@@ -3647,22 +3848,32 @@ Module[
   hasConstList     = {};
 
   If[isLifted,
-    (* ---- Lifted mode: route every sector through ProcessSectorLifted ----
-       $Failed (liftcomplex/liftnopivot/liftdivergent) aborts the whole call;
-       EmptyDomain sectors contribute 0 and are dropped+counted; the rest are
-       convergent.  No "divergent sectors" exist in lifted mode (plan.md §6.2). *)
-    (* SplitRealImag (plan.md §6.3): decompose on Re(B) so the lifted importance
-       measure is real; Im(B) is reattached as "ImagPolyExponents" for the
-       codegen phase.  Direct/real path: specForProc === liftedSpec unchanged. *)
-    specForProc = If[cxSplit,
-      MapAt[Re, liftedSpec, {Key["PolynomialExponents"]}], liftedSpec];
+    (* ---- Lifted mode: process every sector via the eps-aware
+       ProcessSectorLifted (planAXpDIV.md §4.3/§4.4) ----
+       $Failed (liftcomplex/liftnopivot/liftdivdomain) aborts the whole call;
+       EmptyDomain sectors contribute 0 and are dropped+counted.  The survivors
+       split into convergent and (single-pole) divergent lifted sectors — the
+       latter feed the tropical-subtraction machinery (Step 4) below, exactly
+       like unlifted divergent sectors.  (The Automatic+IBP combination already
+       routed to evaluateTropicalIBPDriver above; a pinned EpsilonValue makes
+       every sector convergent — the LaurentFromSubtraction route.) *)
+    (* SplitRealImag (plan.md §6.3): decompose on Re(B); Im(B) reattached as
+       "ImagPolyExponents".  A pinned EpsilonValue is substituted first so the
+       flattening exponents are numeric (mirrors the unlifted branch). *)
+    specForProc = liftedSpec;
+    If[epsVal =!= None && eps =!= None,
+      specForProc = MapAt[# /. eps -> epsVal &, specForProc, {Key["MonomialExponents"]}];
+      specForProc = MapAt[# /. eps -> epsVal &, specForProc, {Key["PolynomialExponents"]}]
+    ];
+    If[cxSplit,
+      specForProc = MapAt[Re, specForProc, {Key["PolynomialExponents"]}]];
     allSectorData = {};
     Catch[
       Do[
         Module[{sd},
           sd = ProcessSectorLifted[specForProc, dualVertices,
                                    simplexList[[s]], s, liftData,
-                                   "Verbose" -> verbose];
+                                   "Eps" -> eps, "Verbose" -> verbose];
           Which[
             sd === $Failed,
               allSectorData = $Failed;  Throw[Null],
@@ -3670,8 +3881,7 @@ Module[
               emptyDomainCount++,
             True,
               If[cxSplit, sd["ImagPolyExponents"] = imBList];
-              AppendTo[allSectorData, sd];
-              AppendTo[hasConstList, sd["HasConstantTerm"]]
+              AppendTo[allSectorData, sd]
           ]
         ],
         {s, Length[simplexList]}
@@ -3679,13 +3889,21 @@ Module[
     ];
     If[allSectorData === $Failed,
       Print["ERROR: ProcessSectorLifted failed for a sector (liftcomplex / ",
-            "liftnopivot / liftdivergent).  Aborting ($Failed)."];
+            "liftnopivot / liftdivdomain).  Aborting ($Failed)."];
       Return[$Failed]
     ];
-    convergentSectors = allSectorData;
-    divergentSectors  = {};
+    convergentSectors = Select[allSectorData,
+      (AssociationQ[#] && !TrueQ[#["IsDivergent"]]) &];
+    divergentSectors  = Select[allSectorData,
+      (AssociationQ[#] && TrueQ[#["IsDivergent"]]) &];
+    (* SplitRealImag x lift x divergence is future work (planAXpDIV.md §4.5). *)
+    If[cxSplit && Length[divergentSectors] > 0,
+      Message[TropicalEval::splitliftdiv];  Return[$Failed]
+    ];
+    hasConstList = (#["HasConstantTerm"] & /@ convergentSectors);
     If[verbose,
-      Print["  ", Length[convergentSectors], " convergent sectors, ",
+      Print["  ", Length[convergentSectors], " convergent, ",
+            Length[divergentSectors], " divergent, ",
             emptyDomainCount, " EmptyDomain sectors dropped"]
     ];
     ,
@@ -4500,7 +4718,7 @@ Module[
 
 IBPProcessSector[sectorData_Association, integrandSpec_Association] :=
 Module[
-  {eps, n, ibpData, terms, clearedPolys, detM,
+  {eps, n, ibpData, terms, clearedPolys, detM, pfBase,
    divVars, ck, rk, aVals, polyExps,
    a0, a1, B0, B1, ak, ak2,
    boundaryData, ibpTermsProcessed,
@@ -4531,6 +4749,8 @@ Module[
   terms        = ibpData["Terms"];
   clearedPolys = ibpData["ClearedPolys"];
   detM         = ibpData["DetM"];
+  (* PrefactorBase (planAXpDIV.md §4.1): Abs[detM] unlifted, lifted base else. *)
+  pfBase       = Lookup[sectorData, "PrefactorBase", Abs[detM]];
   divVars      = ibpData["DivergentVariables"];
   aVals        = ibpData["OriginalExponents"];
   polyExps     = ibpData["OriginalPolyExponents"];
@@ -4587,7 +4807,11 @@ Module[
       {j, Length[bndPolys]}
     ];
 
-    bndPrefactor = Abs[detM] / (Times @@ bndA0);
+    (* PrefactorBase at eps->0 for codegen (planAXpDIV.md §4.1): a lifted
+       PrefactorBase carries eps; the codegen needs the numeric eps^0 value, and
+       the finite (P'/P)(0)*pole term is added back via DLogPrefactor in the
+       driver assembly.  eps-free for unlifted -> byte-identical (#25). *)
+    bndPrefactor = (pfBase /. eps -> 0) / (Times @@ bndA0);
 
     bndLogInsertions = <|
       "VariableTerms" -> Table[
@@ -4653,7 +4877,7 @@ Module[
         {j, Length[clearedPolys]}
       ];
 
-      flatPrefactor = Abs[detM] / (Times @@ alpha0);
+      flatPrefactor = (pfBase /. eps -> 0) / (Times @@ alpha0);
 
       (* Log insertion sum *)
       logInsertions = <|
@@ -4708,6 +4932,17 @@ Module[
     "MinExponents"           -> sectorData["MinExponents"],
     "MonomialExponents"      -> sectorData["MonomialExponents"],
     "RawExponents"           -> sectorData["RawExponents"],
+    (* Lifted-sector domain indicator (planAXpDIV.md §4.2): propagated to the IBP
+       boundary/term codegen.  None for unlifted -> byte-identical (#25). *)
+    "DomainConstraint"       -> Lookup[sectorData, "DomainConstraint", None],
+    (* DLogPrefactor (planAXpDIV.md §4.1): d/deps log(PrefactorBase)|_0.  A lifted
+       sector's PrefactorBase = (|detM|/|mp|) z0^(ap/mp-1) carries eps via ap(eps),
+       so the codegen — which uses PrefactorBase(0) — misses a finite-part term
+       (P'/P)(0)*pole; the driver's Laurent assembly adds it back.  Exactly 0 for
+       an unlifted sector (PrefactorBase = |detM| is eps-free), so the unlifted
+       IBP numbers are unchanged. *)
+    "DLogPrefactor"          -> If[eps === None, 0,
+                                   D[Log[pfBase], eps] /. eps -> 0],
     "AnalyticPole"           -> 1/ck
   |>
 ];
@@ -4826,7 +5061,7 @@ ValidateIBP[ibpSectorData_Association, sectorData_Association,
 Module[
   {eps, n, k, ck, rk, a0, a1, aVals, polyExps,
    kinRules, epsRules, fullRules,
-   clearedPolys, detM, yVars,
+   clearedPolys, detM, pfBase, domC, yVars,
    originalIntegral,
    boundaryVal, ibpTermVals, ibpSum,
    ak, reconstructed, relError,
@@ -4842,6 +5077,9 @@ Module[
   aVals    = sectorData["NewExponents"];
   polyExps = sectorData["PolynomialExponents"];
   detM     = sectorData["DetM"];
+  (* PrefactorBase (planAXpDIV.md §4.1) + lifted DomainConstraint (§4.2). *)
+  pfBase   = Lookup[sectorData, "PrefactorBase", Abs[detM]];
+  domC     = Lookup[sectorData, "DomainConstraint", None];
   B0       = polyExps /. eps -> 0;
 
   kinRules  = testKinematics;
@@ -4866,12 +5104,14 @@ Module[
       ]],
       {j, Length[clearedPolys]}
     ];
-    integrand = Abs[detM] *
+    integrand = (pfBase /. fullRules) *
       Exp[Total[(aNum - 1) * Log /@ yVars]] *
       Times @@ MapThread[
         Function[{pv, be}, Exp[be * Log[pv]]],
         {polyValsExpr, polyExps /. fullRules}
       ];
+    (* lifted-sector domain indicator over all n coords (planAXpDIV.md §4.2) *)
+    integrand = integrand * liftedDomainBooleWL[domC, yVars];
 
     originalIntegral = Quiet@NIntegrate[
       integrand,
@@ -4900,12 +5140,15 @@ Module[
       {j, Length[clearedPolys]}
     ];
 
-    bndIntegrand = Abs[detM] *
+    bndIntegrand = (pfBase /. fullRules) *
       Exp[Total[(bndAnum - 1) * Log /@ bndYVars]] *
       Times @@ MapThread[
         Function[{pv, be}, Exp[be * Log[pv]]],
         {bndPolyVals, polyExps /. fullRules}
       ];
+    (* boundary at y_k=1 over the n-1 non-divergent coords (drop slot k, §4.2) *)
+    bndIntegrand = bndIntegrand *
+      liftedDomainBooleWL[dropDivVarFromDomain[domC, k], bndYVars];
 
     boundaryVal = Quiet@NIntegrate[
       bndIntegrand,
@@ -4963,12 +5206,14 @@ Module[
             {j, Length[clearedPolys]}
           ];
 
-          integrand = Abs[detM] *
+          integrand = (pfBase /. fullRules) *
             Exp[Total[(termAlpha - 1) * Log /@ ibpYVars]] *
             Times @@ MapThread[
               Function[{pv, be}, Exp[(be /. kinRules) * Log[pv]]],
               {polyValsExpr, termPE /. epsRules}
             ];
+          (* IBP terms are full-n-dim: full domain indicator (§4.2) *)
+          integrand = integrand * liftedDomainBooleWL[domC, ibpYVars];
 
           termVal = Quiet@NIntegrate[
             integrand,
@@ -5140,6 +5385,10 @@ Options[evaluateTropicalIBPDriver] = {
   (* sampler selection (default = the zero-dependency plain Monte Carlo) *)
   "Integrator"       -> "MC",    (* "MC" | "VEGAS" (aliases "MonteCarlo"/"Vegas") *)
   "Batch"            -> False,         (* IBP batch deferred -> per-kp VEGAS *)
+  (* LiftData (planAXpDIV.md §4.4, Barrier C): when present, sectors are
+     processed via ProcessSectorLifted (eps-aware), so lifted+divergent
+     integrals take the IBP route exactly like unlifted divergent ones. *)
+  "LiftData"         -> None,
   Sequence @@ $vegasOptionDefaults
 };
 
@@ -5148,7 +5397,7 @@ evaluateTropicalIBPDriver[integrandSpec_Association, fanData_List,
 Module[
   {dualVertices, simplexList, n, nKP, nParams, eps,
    allSectorData, convergentSectors, divergentSectors,
-   ibpProcessedSectors,
+   ibpProcessedSectors, liftData, isLifted, emptyDomainCount,
    cppFile, cppBinary, kinFile, resultFile,
    cppResult, ibpFuncMap,
    mcRawResults, finalResults,
@@ -5160,6 +5409,9 @@ Module[
   nSamples   = OptionValue["NSamples"];
   nThreads   = OptionValue["NThreads"];
   workDir    = OptionValue["WorkingDirectory"];
+  liftData   = OptionValue["LiftData"];
+  isLifted   = (liftData =!= None);
+  emptyDomainCount = 0;
   eps        = integrandSpec["RegulatorSymbol"];
   integrator = normalizeIntegrator[OptionValue["Integrator"]];
   batch      = TrueQ[OptionValue["Batch"]];
@@ -5194,10 +5446,39 @@ Module[
   (* --- Step 1: Process all sectors --- *)
   If[verbose, Print["Processing ", Length[simplexList], " sectors..."]];
 
-  allSectorData = Table[
-    ProcessSector[integrandSpec, dualVertices,
-                  simplexList[[s]], s, "Verbose" -> False],
-    {s, Length[simplexList]}
+  If[isLifted,
+    (* Lifted IBP route (planAXpDIV.md §4.4): each sector via the eps-aware
+       ProcessSectorLifted.  $Failed (liftcomplex / liftnopivot / liftdivdomain)
+       aborts the whole call; EmptyDomain sectors contribute 0 and are dropped;
+       the rest split into convergent / (single-pole) divergent lifted sectors. *)
+    allSectorData = Reap[
+      Catch[
+        Do[
+          Module[{sd},
+            sd = ProcessSectorLifted[integrandSpec, dualVertices,
+                   simplexList[[s]], s, liftData, "Eps" -> eps, "Verbose" -> False];
+            Which[
+              sd === $Failed, Sow[$Failed]; Throw[Null],
+              AssociationQ[sd] && KeyExistsQ[sd, "EmptyDomain"] && sd["EmptyDomain"],
+                emptyDomainCount++,
+              True, Sow[sd]
+            ]
+          ],
+          {s, Length[simplexList]}
+        ]
+      ]
+    ][[2]];
+    allSectorData = If[allSectorData === {}, {}, allSectorData[[1]]];
+    If[MemberQ[allSectorData, $Failed],
+      Print["ERROR: ProcessSectorLifted failed for a sector (liftcomplex / ",
+            "liftnopivot / liftdivdomain).  Aborting ($Failed)."];
+      Return[$Failed]
+    ],
+    allSectorData = Table[
+      ProcessSector[integrandSpec, dualVertices,
+                    simplexList[[s]], s, "Verbose" -> False],
+      {s, Length[simplexList]}
+    ]
   ];
 
   convergentSectors = Select[allSectorData,
@@ -5207,7 +5488,8 @@ Module[
 
   If[verbose,
     Print["  ", Length[convergentSectors], " convergent, ",
-          Length[divergentSectors], " divergent sectors"]
+          Length[divergentSectors], " divergent sectors",
+          If[isLifted, ", " <> ToString[emptyDomainCount] <> " empty (dropped)", ""]]
   ];
 
   (* --- Step 2: Process divergent sectors with IBP --- *)
@@ -5409,6 +5691,12 @@ Module[
           (* Finite contribution:
              [(B^{(1)} - S_1) - r_k (B^{(0)} - S_0)] / c_k *)
           finiteCont = ((bndLog - S1) - rkS * (bndBase - S0)) / ckS;
+
+          (* Lifted PrefactorBase eps-dependence (planAXpDIV.md §4.1): the codegen
+             used PrefactorBase(0), so add the missing (P'/P)(0)*pole finite term.
+             DLogPrefactor is 0 for unlifted sectors -> unlifted result unchanged. *)
+          finiteCont = finiteCont +
+            (ibpProcessedSectors[[s]]["DLogPrefactor"] /. kinRules) * poleCont;
 
           ibpContribPole   += poleCont;
           ibpContribFinite += finiteCont;

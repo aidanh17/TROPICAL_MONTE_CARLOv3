@@ -309,8 +309,10 @@ Options (full list):
                                       Force: "None"|"IBP"|"Subtraction". *)
     "LiftData"      -> None        (* None | <association from LiftCoefficients[]>;
                                       advanced/low-level path (typical users call
-                                      EvaluateTropicalMCLifted); mutually exclusive
-                                      with Method != "None" *)
+                                      EvaluateTropicalMCLifted).  May be combined
+                                      with Method "IBP"/"Subtraction": a lifted
+                                      sector with a simple 1/eps pole is supported
+                                      (Case A; planAXpDIV.md / limitation L2). *)
     "Integrator"    -> "MC"        (* "MC" (default) | "VEGAS" *)
     "EpsilonValue"  -> None        (* substitute eps->value for fixed-eps eval *)
     "NSamples"      -> 10^6
@@ -568,9 +570,31 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
       variable are refused ($Failed, TropicalEval::nested / ::nestedIBP).
       The full integral at a fixed eps is still reachable via "EpsilonValue".
 
-  L2. LIFTING AND DIVERGENCE ARE MUTUALLY EXCLUSIVE.
-      A sector is plain-convergent, divergent, OR lifted -- not divergent+lifted.
-      Combining them is documented future work (plan.md N3).
+  L2. LIFTING + A SIMPLE 1/eps POLE -- SUPPORTED (Case A).   [planAXpDIV.md]
+      A lifted sector may ALSO carry a single 1/eps pole.  ProcessSectorLifted is
+      eps-aware: it classifies each post-delta effective exponent atilde at eps->0
+      (exact, no tolerance) and may emit a divergent lifted SectorData carrying a
+      "PrefactorBase" (= (|detM|/|mp|) z0^(ap/mp-1)) and a "DomainConstraint".  The
+      divergence routines (ProcessDivergentSector / IBPProcessSector) and codegen
+      reconstruct prefactors from PrefactorBase and thread the domain indicator;
+      the IBP Laurent assembly adds the PrefactorBase eps-derivative finite term
+      (DLogPrefactor).  Both the IBP route and the LaurentFromSubtraction route
+      handle it (cross-check 41-C: pole/finite agree across routes and reproduce
+      NIntegrate; pole = pi/4 for the canonical toy).  Single-pole-per-sector
+      (L1/L8) still applies to lifted sectors.
+
+      NOT yet supported (refused with a clean $Failed, never a wrong number):
+        - Case B: the divergent variable couples to the lifted domain face
+          (ic_k != 0 for EVERY admissible pivot).  The caseA-first pivot
+          ranking prefers a decoupled pivot whenever one exists, so Case B is
+          rare; when unavoidable, TropicalEval::liftdivdomain aborts (cc_44).
+          A log-space remap is future work.
+        - SplitRealImag x lift x divergence: refused with
+          TropicalEval::splitliftdiv (per-term MonoFactorLog re-derivation is
+          future work).  Use ComplexExponentMode -> "Direct".
+        - Complex polynomial exponents B with lifting: inherits the pre-existing
+          liftcomplex limitation (a complex atilde has no real domain indicator),
+          independent of divergence.
 
   L3. HasConstantTerm = False -> POSSIBLE INFINITE MC VARIANCE.
       When HasConstantTerm is False after delta-elimination, the lifted integrand
