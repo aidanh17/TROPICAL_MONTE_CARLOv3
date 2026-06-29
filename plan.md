@@ -419,8 +419,8 @@ The "many cross checks" requirement, in four parts: **§8.1** a feature-coverage
 | F3b uplift — complex coefficients | #34, #40 |
 | F3c uplift — anchor / `k` selection | #20, #39 |
 | F4a complex polynomial exponents B | #2, #21, #21b, #33, #34 |
-| F4b complex monomial exponents A | #2, #21 |
-| F4c SplitRealImag VEGAS mode (the BUG-1 regime) | #21b, #34 |
+| F4b complex monomial exponents A | #2, #21 (convergent); **#48 (× divergence, unlifted)**; #47 (× lift × divergence) |
+| F4c SplitRealImag VEGAS mode (the BUG-1 regime) | #21b, #34; **#48 (× divergence, unlifted, isolated from lifting)** |
 | F5a VEGAS (per-kp) | #5, #6, #7, #9, #42 |
 | F5b VEGAS **batched** | #23, #36 |
 | F5c high-D VEGAS sizing | #42, #34 |

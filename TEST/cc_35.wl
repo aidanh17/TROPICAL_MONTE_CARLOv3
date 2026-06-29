@@ -46,7 +46,7 @@
        plan.md §8.2 rows #3 #4, §8.3 row #35
    ============================================================================ *)
 
-$v3Root = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3";
+$v3Root = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
 Get[FileNameJoin[{$v3Root, "tropical_fan.wl"}]];
 Get[FileNameJoin[{$v3Root, "tropical_eval.wl"}]];
 

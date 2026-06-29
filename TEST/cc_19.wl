@@ -45,12 +45,13 @@
 
    Run:
      wolframscript -file TEST/cc_19.wl
-   from the TROPICAL_MONTE_CARLO3 root.
+   from the TROPICAL_MONTE_CARLOv3 root.
    ============================================================================ *)
 
 (* --- load v3 packages using absolute paths --- *)
-Get["/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/tropical_fan.wl"];
-Get["/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/tropical_eval.wl"];
+$v3Root = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
+Get[FileNameJoin[{$v3Root, "tropical_fan.wl"}]];
+Get[FileNameJoin[{$v3Root, "tropical_eval.wl"}]];
 
 Print["CC19: v3 packages loaded."];
 Print[];

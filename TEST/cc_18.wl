@@ -33,13 +33,13 @@
      OLD_CODE/.../EXAMPLES/test_vegas.wl  (L1/L2 lifted+VEGAS vs lifted+MC)
 
    Run from any directory:
-     wolframscript -file /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/TEST/cc_18.wl
+     wolframscript -file /Users/aidanh/Desktop/TROPICAL_MONTE_CARLOv3/TEST/cc_18.wl
    ============================================================================ *)
 
 (* --------------------------------------------------------------------------
    Load v3 packages by absolute path.
    -------------------------------------------------------------------------- *)
-$v3Root = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3";
+$v3Root = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
 Get[FileNameJoin[{$v3Root, "tropical_fan.wl"}]];
 Get[FileNameJoin[{$v3Root, "tropical_eval.wl"}]];
 

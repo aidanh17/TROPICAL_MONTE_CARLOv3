@@ -18,7 +18,7 @@
      Exits 1  if nFAIL >= 1.
 
    Usage:
-     cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3
+     cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLOv3
      wolframscript -file TEST/run_all.wl
 
    Nothing under OLD_CODE/ is touched.  (plan.md §10: "Never edit OLD_CODE/")
@@ -30,7 +30,7 @@
 $v3Root = DirectoryName @ DirectoryName @ ExpandFileName[$InputFileName];
 If[$v3Root === "" || !DirectoryQ[$v3Root],
   (* Fallback for interactive evaluation without $InputFileName set. *)
-  $v3Root = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3"
+  $v3Root = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLOv3"
 ];
 
 $interfilesRoot = FileNameJoin[{$v3Root, "INTERFILES"}];

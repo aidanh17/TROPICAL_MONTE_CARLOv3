@@ -41,14 +41,14 @@
    Tier: 1  (WL + g++; no CUBA, no FIESTA).
 
    Run:
-     cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3
+     cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLOv3
      wolframscript -file TEST/cc_2.wl
    ============================================================================ *)
 
 (* --------------------------------------------------------------------------
    Load packages using absolute paths (plan.md §10 convention)
    -------------------------------------------------------------------------- *)
-$repoRoot = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3";
+$repoRoot = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
 
 Get[FileNameJoin[{$repoRoot, "tropical_fan.wl"}]];
 Get[FileNameJoin[{$repoRoot, "tropical_eval.wl"}]];

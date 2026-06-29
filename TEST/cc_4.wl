@@ -21,7 +21,7 @@
 (* --------------------------------------------------------------------------
    Load v3 packages by absolute path so this file runs from any working dir.
    -------------------------------------------------------------------------- *)
-$v3Root = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3";
+$v3Root = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
 Get[FileNameJoin[{$v3Root, "tropical_fan.wl"}]];
 Get[FileNameJoin[{$v3Root, "tropical_eval.wl"}]];
 

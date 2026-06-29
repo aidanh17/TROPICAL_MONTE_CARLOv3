@@ -24,14 +24,14 @@
    NEVER required for CC31 PASS/FAIL.
 
    Run:
-     cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3
+     cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLOv3
      wolframscript -file TEST/cc_31.wl
    ============================================================================ *)
 
 (* --------------------------------------------------------------------------
    0. Load v3 packages via absolute paths (branch-safe; never uses SetDirectory)
    -------------------------------------------------------------------------- *)
-$v3Root = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3";
+$v3Root = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
 
 Get[FileNameJoin[{$v3Root, "tropical_fan.wl"}]];
 Get[FileNameJoin[{$v3Root, "tropical_eval.wl"}]];

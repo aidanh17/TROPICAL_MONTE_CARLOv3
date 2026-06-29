@@ -35,14 +35,15 @@
          "CC7 SKIP (no CUBA)" and exits 0.
 
    Usage:
-     wolframscript -file /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/TEST/cc_7.wl
+     wolframscript -file /Users/aidanh/Desktop/TROPICAL_MONTE_CARLOv3/TEST/cc_7.wl
    ============================================================================ *)
 
 (* ---- 1. Load v3 packages via absolute paths ---- *)
-Get["/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/tropical_fan.wl"];
-Get["/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/tropical_eval.wl"];
+$v3Root = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
+Get[FileNameJoin[{$v3Root, "tropical_fan.wl"}]];
+Get[FileNameJoin[{$v3Root, "tropical_eval.wl"}]];
 
-interDir = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/TEST/INTERFILES";
+interDir = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLOv3/TEST/INTERFILES";
 Quiet[CreateDirectory[interDir]];
 
 (* ---- 2. CUBA presence check via v3 memoised detectCuba[] ---- *)

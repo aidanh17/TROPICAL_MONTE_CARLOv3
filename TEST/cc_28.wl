@@ -41,13 +41,14 @@
        sandbox_lift_common.wl  (domain feasibility classification)
        compare_toy0_lift.wl    (Toy0 drop-count reference)
 
-   Run (from the TROPICAL_MONTE_CARLO3 root):
+   Run (from the TROPICAL_MONTE_CARLOv3 root):
      wolframscript -file TEST/cc_28.wl
    ============================================================================ *)
 
 (* --- load v3 packages via absolute paths --- *)
-Get["/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/tropical_fan.wl"];
-Get["/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/tropical_eval.wl"];
+$v3Root = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
+Get[FileNameJoin[{$v3Root, "tropical_fan.wl"}]];
+Get[FileNameJoin[{$v3Root, "tropical_eval.wl"}]];
 
 Print["CC28: v3 packages loaded."];
 Print[];

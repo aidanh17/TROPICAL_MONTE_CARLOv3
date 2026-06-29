@@ -539,16 +539,16 @@ Examples and tests (TROPICAL_MONTE_CARLO3/EXAMPLES/):
   vegas_vs_mc_divergent.wl    Divergent + both samplers + both div methods
   speed_comparison.wl         Sampler speed/accuracy benchmark
 
-Cross-check suite (TROPICAL_MONTE_CARLO3/TEST/):
+Cross-check suite (TROPICAL_MONTE_CARLOv3/TEST/):
   baselines/                  Golden transcripts captured from OLD_CODE
-  cc_*.wl                     43 named cross-checks (see plan.md §8)
+  cc_*.wl                     48 named cross-checks (see plan.md §8 + planX.md)
   gen_sectors.wl              computeFanRobust reference (ported to fan)
 
-SANDBOX (TROPICAL_MONTE_CARLO3/SANDBOX/):
+SANDBOX (TROPICAL_MONTE_CARLOv3/SANDBOX/):
   sandbox_lift_common.wl, sandbox_toy0/1/2.wl, bench_lift_variance.wl,
   verify_complex_flatten.wl, z0_sweep_*.wl, sandbox_true_sigma.wl
 
-Cross-checks vs FIESTA (TROPICAL_MONTE_CARLO3/CC/):
+Cross-checks vs FIESTA (TROPICAL_MONTE_CARLOv3/CC/):
   compare_pole_and_finite.wl, fiesta_bubblepp_standalone.wl, etc.
   (Requires FIESTA install + path edits; skips gracefully if absent.)
 
@@ -777,7 +777,7 @@ Command line (run ONE AT A TIME per WorkingDirectory):
 8.  CROSS-CHECKS AND VALIDATION STRATEGY
 ================================================================================
 
-The v3 cross-check suite (TEST/) covers 43 named checks (plan.md §8).
+The v3 cross-check suite (TEST/) covers 48 named checks (plan.md §8 + planX.md).
 Key principle: NO gate is judged by the agent that produced the result;
 every numeric PASS is verified against >= 2 INDEPENDENT oracles.
 
@@ -799,3 +799,10 @@ Highest-value checks:
   cc_45 lifting x divergence battery (n=2,3,4; real B + one complex-B row)
   cc_46 complex-B x lifting x divergence: IBP vs Subtraction vs NIntegrate
         (complex Laurent), n=2,3 [planCXLIFTDIV.md]
+  cc_47 complex-MONOMIAL-A x lifting x divergence (SplitRealImag): convergent +
+        Case-A divergent (genuinely complex pole); Case-B refused (splitdivmono)
+        [planAXpDIVv2.md]
+  cc_48 complex exponents x divergence, UNLIFTED: monomial-A (real B) and
+        polynomial-B, Direct == SplitRealImag == exact Gamma-Laurent, IBP<->Sub
+        agree.  Fills the F2 x F4b cell (F4b was convergent-only); isolates the
+        SplitRealImag phase machinery from lifting (cc_46/cc_47 bundled it)

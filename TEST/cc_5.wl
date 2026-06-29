@@ -19,7 +19,7 @@
    If CUBA is absent the script prints "CC5 SKIP (no CUBA)" and exits 0.
 
    Run:
-       cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3
+       cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLOv3
        wolframscript -file TEST/cc_5.wl
 
    Reference (plan.md §8, #5):
@@ -31,7 +31,7 @@
    0.  Load v3 packages using absolute paths (plan.md §10: use absolute paths).
    -------------------------------------------------------------------------- *)
 
-$v3Root = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3";
+$v3Root = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
 Get[FileNameJoin[{$v3Root, "tropical_fan.wl"}]];
 Get[FileNameJoin[{$v3Root, "tropical_eval.wl"}]];
 

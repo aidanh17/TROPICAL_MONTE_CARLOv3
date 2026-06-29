@@ -15,8 +15,9 @@
    ============================================================ *)
 
 (* --- load v3 packages using absolute paths ------------------- *)
-Get["/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/tropical_fan.wl"];
-Get["/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3/tropical_eval.wl"];
+$v3Root = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
+Get[FileNameJoin[{$v3Root, "tropical_fan.wl"}]];
+Get[FileNameJoin[{$v3Root, "tropical_eval.wl"}]];
 
 (* --- integrand spec ------------------------------------------ *)
 eps   = Symbol["cc13eps"];

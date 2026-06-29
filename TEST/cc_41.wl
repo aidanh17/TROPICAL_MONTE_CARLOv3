@@ -54,13 +54,13 @@
 
    Run
    ---
-     cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3
+     cd /Users/aidanh/Desktop/TROPICAL_MONTE_CARLOv3
      wolframscript -file TEST/cc_41.wl
    ============================================================================ *)
 
 (* ── 0.  Locate packages, load ───────────────────────────────────────────── *)
 
-$pkgRoot = "/Users/aidanh/Desktop/TROPICAL_MONTE_CARLO3";
+$pkgRoot = DirectoryName[DirectoryName[ExpandFileName[$InputFileName]]];
 $fanWL   = FileNameJoin[{$pkgRoot, "tropical_fan.wl"}];
 $evalWL  = FileNameJoin[{$pkgRoot, "tropical_eval.wl"}];
 
