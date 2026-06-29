@@ -570,8 +570,8 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
       variable are refused ($Failed, TropicalEval::nested / ::nestedIBP).
       The full integral at a fixed eps is still reachable via "EpsilonValue".
 
-  L2. LIFTING + A SIMPLE 1/eps POLE -- SUPPORTED (Case A; + complex B via
-      SplitRealImag).   [planAXpDIV.md / planCXLIFTDIV.md]
+  L2. LIFTING + A SIMPLE 1/eps POLE -- SUPPORTED (Case A; + complex B AND complex
+      monomial A via SplitRealImag).   [planAXpDIV.md / planCXLIFTDIV.md / planAXpDIVv2.md]
       A lifted sector may ALSO carry a single 1/eps pole.  ProcessSectorLifted is
       eps-aware: it classifies each post-delta effective exponent atilde at eps->0
       (exact, no tolerance) and may emit a divergent lifted SectorData carrying a
@@ -613,6 +613,24 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
       Direct mode with complex-B lifting remains refused (liftcomplex: a complex
       atilde has no real domain indicator) -- use SplitRealImag.
 
+      COMPLEX MONOMIAL exponents A with lifting + a 1/eps pole -- SUPPORTED via
+      ComplexExponentMode -> "SplitRealImag" (planAXpDIVv2.md, cc_47).  This is the
+      principal-series structure (the bubble at imaginary mu) -- the FIRST lifted
+      integrand whose MONOMIAL exponents are complex; before this it aborted on
+      every cone with liftcomplex.  SplitRealImag now realifies A on the same
+      footing as B (subtract the eps-free Im(A); the real regulator eps in the
+      monomial exponent is preserved), and Im(A) rides a NEW bare-monomial
+      oscillatory phase exp(i (Const_A + Sum_a (Im(A).M)_a / alpha0_a log y'_a)),
+      the monomial twin of the Im(B) MonoFactorLog phase.  Const_A = (Im(eaug)_p/m_p)
+      logZ0 is the lifted bookkeeping (0 unlifted), Im(eaug) = Im(A_aug).RayMatrix.
+        - Convergent (bubblepm analog): EvaluateTropicalMC SplitRealImag matches
+          NIntegrate of the complex original (cc_47 (A), < 2%).
+        - Divergent, Case A (the imaginary phase decouples from the divergent
+          direction): IBP and pinned-eps Subtraction agree and match NIntegrate's
+          complex Laurent, including a genuinely complex pole (cc_47 (B)).
+      Direct mode with complex-A lifting remains refused (liftcomplex) -- use
+      SplitRealImag.
+
       NOT yet supported (refused with a clean $Failed, never a wrong number):
         - Case B: the divergent variable couples to the lifted domain face
           (ic_k != 0 for EVERY admissible pivot).  The caseA-first pivot
@@ -623,10 +641,15 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
           Subtraction path (Method->"None"/"Subtraction"): refused
           (TropicalEval::splitliftdiv) -- that path's G0/G1 emitters are not
           phase-aware.  Use Method->Automatic/"IBP" or LaurentFromSubtraction.
-        - The complex analogue of Case B: the dropped monomial factor carries a
-          nonzero Im(B) exponent in the divergent direction (the real pole would
-          acquire an imaginary shift) -- refused (TropicalEval::splitdivmono);
-          use the pinned-eps Subtraction route.
+        - The complex analogue of Case B: the divergent direction carries a
+          nonzero imaginary exponent -- from the dropped monomial factor (Im(B).D)
+          OR from the bare monomial (Im(A).M, e.g. an imaginary monomial exponent
+          on the pole variable).  The real 1/eps pole then moves off eps=0 (a
+          complex shift), so the real-pole IBP assembly is refused
+          (TropicalEval::splitdivmono, cc_47 (C)).  At pinned eps the divergent-
+          slot phase coefficient ~ 1/eps makes the integrand oscillate too fast
+          for either route to resolve reliably, so this case is out of scope --
+          the clean $Failed is the deliverable.
 
   L3. HasConstantTerm = False -> POSSIBLE INFINITE MC VARIANCE.
       When HasConstantTerm is False after delta-elimination, the lifted integrand

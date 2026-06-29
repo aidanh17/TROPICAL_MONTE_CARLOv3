@@ -206,12 +206,12 @@ TropicalEval::validate = "Validation `1`: relative error `2` exceeds tolerance `
 TropicalEval::liftidentity = "LiftCoefficients: round-trip identity check FAILED for polynomial `1`; lifted poly at z->z0 does not match original (relative residual `2`).";
 TropicalEval::liftbadvar = "LiftCoefficients: cannot build a valid auxiliary variable from the spec variables `1` (BUG-2: Head[plainSymbol][n+1] yields the invalid Symbol[n+1]).  Use indexed variables x[i], or the aux variable could not be made fresh.  Returning $Failed.";
 TropicalEval::liftnopivot = "ProcessSectorLifted: cone `1` — no admissible pivot found.  z-row m=`2`, per-pivot atilde=`3`.  Try a different k in the lift rules; alternatively the domain constraint may cut off all divergent regions (log-space remap, future work).";
-TropicalEval::liftcomplex = "ProcessSectorLifted: cone `1` — all candidate pivots produce complex atilde; cannot emit a real-valued domain indicator.  Lift with a different k or check that polynomial exponents B are real.";
+TropicalEval::liftcomplex = "ProcessSectorLifted: cone `1` — all candidate pivots produce complex atilde; cannot emit a real-valued domain indicator.  In Direct mode, complex monomial (A) OR polynomial (B) exponents are unsupported with lifting — use ComplexExponentMode -> \"SplitRealImag\" (splits BOTH A and B: real parts build the domain map, imaginary parts ride the oscillatory phase).";
 TropicalEval::liftdivergent = "ProcessSectorLifted: cone `1` — atilde `2` has a non-positive component after delta resolution; the lifted sector is divergent.  Lifting supports convergent integrals only (plan.md N3).";
 TropicalEval::liftfandim = "EvaluateTropicalMC with LiftData: the fan dimension is `1` but n+1 = `2` is required.  Supply the (n+1)-dimensional lifted fan.";
 TropicalEval::liftdegenerate = "EvaluateTropicalMCLifted: the lifted Newton polytope is lower-dimensional; automatic fan construction is not possible — supply an explicit complete simplicial fan via the \"FanData\" option.";
 TropicalEval::liftdivdomain = "ProcessSectorLifted: cone `1` — the divergent variable couples to the lifted domain constraint (ic_k != 0) for every admissible pivot.  The 1/eps pole and the domain face interact (Case B, planAXpDIV.md §3); a log-space remap is required (future work).  Aborting ($Failed).";
-TropicalEval::splitdivmono = "IBPProcessSector: cone `1` — the dropped tropical monomial factor has a nonzero exponent in the divergent direction with a nonzero Im(B) (Sum_j Im(B_j) D_{j,k} = `2`), so the 1/eps pole would acquire an imaginary shift the real-pole IBP assembly does not resolve.  This is the complex analogue of the Case-B coupling (planAXpDIV.md §3 / planCXLIFTDIV.md §9); use the pinned-eps Subtraction route (LaurentFromSubtraction) instead.  Aborting ($Failed).";
+TropicalEval::splitdivmono = "IBPProcessSector: cone `1` — the divergent direction carries a nonzero imaginary exponent (Sum_j Im(B_j) D_{j,k} from the dropped tropical monomial factor PLUS Im(A).M from the bare monomial = `2`), so the 1/eps pole acquires an imaginary shift (the pole moves off eps=0) that the real-pole IBP assembly does not resolve.  This is the complex Case-B coupling (planAXpDIV.md §3 / planCXLIFTDIV.md §9 / planAXpDIVv2.md §4.5).  Aborting ($Failed) rather than emitting a wrong pole.";
 TropicalEval::splitliftdiv = "EvaluateTropicalMC: SplitRealImag x lifting x divergence is supported only on the IBP route (Method -> Automatic / \"IBP\") and the pinned-eps Subtraction route (LaurentFromSubtraction); the symbolic-eps inline Subtraction path (Method -> \"None\"/\"Subtraction\") does not re-derive the per-piece oscillatory phase (planCXLIFTDIV.md C1).  Use Method -> Automatic (default) or LaurentFromSubtraction for lifted+divergent complex-exponent integrals.";
 
 (* ---- High-D VEGAS sizing guard (lift_error_log L1, plan.md §6.5) ---- *)
@@ -333,7 +333,12 @@ Module[{a0vals, isDivergent, divVar, n, flattenedPolys, prefactor},
    a_j^eff > 0 for all j, and we can flatten using these effective exponents.
    -------------------------------------------------------------------------- *)
 
-Options[ProcessSector] = {"Verbose" -> False};
+(* "ImagMonoExps" (planAXpDIVv2.md §4.3): the ORIGINAL imaginary monomial
+   exponents Im(A) (length n), supplied only in SplitRealImag mode when the
+   monomial exponents are complex.  When None (default, real-A / Direct / the
+   inner ProcessSector call from ProcessSectorLifted) NO MonomialPhaseLog is
+   attached, so the emitted C++ is byte-identical (#25). *)
+Options[ProcessSector] = {"Verbose" -> False, "ImagMonoExps" -> None};
 
 ProcessSector[integrandSpec_Association, dualVertices_List,
               simplex_List, coneIndex_Integer, OptionsPattern[]] :=
@@ -342,11 +347,12 @@ Module[
    selectedRays, mMatrix, detM, n,
    transformedPolys, clearedPolys, minExponents,
    rawAVals, effectiveAVals,
-   flattenedPolys, prefactor, monoFactorLog,
+   flattenedPolys, prefactor, monoFactorLog, monomialPhaseLog, imAexps,
    isDivergent, divVar, verbose, sectorData,
    parsedPolys},
 
   verbose = OptionValue["Verbose"];
+  imAexps = OptionValue["ImagMonoExps"];
 
   (* Extract fields from integrand spec *)
   polys    = integrandSpec["Polynomials"];
@@ -490,6 +496,20 @@ Module[
     {k, Length[clearedPolys]}
   ];
 
+  (* MonomialPhaseLog (planAXpDIVv2.md §3) — the bare-monomial oscillatory phase
+     from the IMAGINARY monomial exponents Im(A).  The bare monomial x^A maps to
+     y^{rawA}, rawA = (A+1).M, whose imaginary part rides the phase:
+        i * Sum_i Im(A_i) log x_i = i * Sum_a (Im(A).M)_a log y_a
+                                  = i * Sum_a [ (Im(A).M)_a / a_eff,a ] log y'_a
+     (the +1 Jacobian is real, NOT part of the phase).  Const = 0 (unlifted).
+     Single oscillatory term (NOT per-polynomial like MonoFactorLog).  Attached
+     only when Im(A) is supplied (SplitRealImag); real-A / Direct -> None -> the
+     codegen emits no monomial phase -> byte-identical (#25). *)
+  monomialPhaseLog = If[imAexps === None, None,
+    Module[{num = imAexps . mMatrix},
+      <|"Const" -> 0,
+        "Coeffs" -> Table[num[[i]]/effectiveAVals[[i]], {i, n}]|>]];
+
   sectorData = <|
     "ConeIndex"            -> coneIndex,
     "RayMatrix"            -> mMatrix,
@@ -504,6 +524,9 @@ Module[
     "Prefactor"            -> prefactor,
     "PrefactorBase"        -> Abs[detM],
     "MonoFactorLog"        -> monoFactorLog,
+    (* planAXpDIVv2.md §4.3: None on real-A sectors (codegen treats absent/None
+       as "no monomial phase") -> byte-identical (#25). *)
+    "MonomialPhaseLog"     -> monomialPhaseLog,
     "IsDivergent"          -> False,
     "DivergentVariable"    -> 0,
     "Dimension"            -> n,
@@ -1006,7 +1029,8 @@ Module[
    behaviour, so every existing lifted/convergent result is byte-identical.
    When a symbol, atilde is classified at eps->0 and a single divergent slot is
    permitted, emitting a divergent lifted SectorData (Barrier A removed). *)
-Options[ProcessSectorLifted] = {"Verbose" -> False, "Eps" -> None};
+Options[ProcessSectorLifted] = {"Verbose" -> False, "Eps" -> None,
+  "ImagMonoExps" -> None};
 
 ProcessSectorLifted[liftedSpec_Association, dualVertices_List,
                     simplex_List, coneIndex_Integer,
@@ -1018,11 +1042,19 @@ Module[
    allOtherZero, domainClass, logZ0,
    fsResult, flattenedPolys, prefactor, prefactorBase,
    monoFactorLogLifted, liftedMonoFactorNum, eps, a0fn, classDir, pivotClass,
-   classifyDomainFor, candClass, bestCI, bestDom, divDir},
+   classifyDomainFor, candClass, bestCI, bestDom, divDir,
+   imAexps, monomialPhaseLogLifted, liftedMonoPhaseNum},
 
   verbose = OptionValue["Verbose"];
+  (* Im(A) over the AUGMENTED variables (length n+1; the aux entry is 0 — the
+     lift appends a real aux monomial exponent, LiftCoefficients:950).  None for
+     real-A / Direct -> no monomial phase attached -> byte-identical (#25). *)
+  imAexps = OptionValue["ImagMonoExps"];
 
   (* --- Step 1: standard (n+1)-dim ProcessSector --- *)
+  (* NOTE: the inner ProcessSector is called WITHOUT "ImagMonoExps": its sdAug
+     MonomialPhaseLog would be on augmented (n+1) coords; ProcessSectorLifted
+     re-derives the post-delta lifted phase below from imAexps directly. *)
   sdAug = ProcessSector[liftedSpec, dualVertices, simplex, coneIndex];
   If[sdAug === $Failed, Return[$Failed]];
 
@@ -1317,6 +1349,31 @@ Module[
         {k, Length[reclearedPolys]}]|>
   ];
 
+  (* MonomialPhaseLog (planAXpDIVv2.md §3), LIFTED case — the bare-monomial
+     oscillatory phase from Im(A), the monomial twin of monoFactorLogLifted.
+     Apply the pivot substitution log Y_p = (logZ0 - Sum_jj mOther_jj log y_jj)/m_p
+     to Sum_a Im(eaug)_a log Y_a, eaug = Im(A_aug).M_aug (M_aug = RayMatrix, the
+     augmented CoV).  In the flattened coords y' (y_jj = (y_jj')^{1/atilde_jj}):
+        Const   = (Im(eaug)_p / m_p) * logZ0
+        Coeffs_jj = ( Im(eaug)_{rIdx[jj]} - Im(eaug)_p * mOther_jj/m_p ) / atilde_jj
+     Identical structure to monoFactorLogLifted with d^aug_{k,*} replaced by the
+     single vector Im(eaug) and NO rcMin term (the bare monomial is not a
+     re-cleared polynomial).  M0 Test E verified this to 1.2e-8 vs NIntegrate.
+     liftedMonoPhaseNum is the UN-flattened numerator (length n) consumed by
+     IBPProcessSector to re-flatten the phase per IBP piece (the §4.3 analog of
+     liftedMonoFactorNum).  Both None on real-A sectors -> byte-identical (#25). *)
+  {monomialPhaseLogLifted, liftedMonoPhaseNum} = If[imAexps === None, {None, None},
+    Module[{imEaug, rIdx, constA, numVec},
+      imEaug = imAexps . mMatrix;               (* length n+1 *)
+      rIdx   = bestPivot["remainIdx"];
+      constA = (imEaug[[pivotP]]/mp) * logZ0;
+      numVec = Table[
+        imEaug[[rIdx[[j]]]] - imEaug[[pivotP]]*mOtherVec[[j]]/mp, {j, n}];
+      {<|"Const" -> constA,
+         "Coeffs" -> Table[numVec[[j]]/atildeVals[[j]], {j, n}]|>,
+       <|"Const" -> constA, "Num" -> numVec|>}
+    ]];
+
   (* ---- Divergent lifted sector: emit a divergent SectorData (planAXpDIV.md
      §4.3, Barrier A).  NewExponents carry eps so the pole machinery
      (IdentifyDivergences / IBPReduceSector) eps-expands them; the divergence
@@ -1341,6 +1398,9 @@ Module[
          re-flatten the oscillatory phase by its own alpha0.  Absent on real /
          unlifted sectors (codegen treats absent as "no phase") -> #25. *)
       "LiftedMonoFactor"    -> liftedMonoFactorNum,
+      (* planAXpDIVv2.md §4.3: un-flattened bare-monomial phase numerator (Im(A));
+         IBPProcessSector re-divides it by each piece's alpha0.  None real-A -> #25. *)
+      "LiftedMonoPhase"     -> liftedMonoPhaseNum,
       "IsDivergent"         -> True,
       "DivergentVariable"   -> divDir,
       "Dimension"           -> n,
@@ -1377,6 +1437,9 @@ Module[
        The divergence routines reconstruct prefactors from this. *)
     "PrefactorBase"       -> prefactorBase,
     "MonoFactorLog"       -> monoFactorLogLifted,
+    (* planAXpDIVv2.md §4.3: bare-monomial phase (Im(A)), flattened by atilde.
+       None on real-A sectors -> codegen emits no monomial phase -> #25. *)
+    "MonomialPhaseLog"    -> monomialPhaseLogLifted,
     "IsDivergent"         -> False,
     "DivergentVariable"   -> 0,
     "Dimension"           -> n,
@@ -2247,6 +2310,42 @@ normalizeIntegrator[s_] := Switch[s,
   _, "MC"];
 
 (* --------------------------------------------------------------------------
+   Im(A) monomial-exponent helpers (planAXpDIVv2.md §4.1 / planR.md R2,R6).
+   Factored out of the two drivers so the load-bearing declare-real / eps->0
+   guard lives in exactly one place.
+   -------------------------------------------------------------------------- *)
+
+(* {imA, hasImagA} for the monomial exponents (the eps-free imaginary part).
+
+   The REAL regulator eps lives in the monomial exponent (x1^{-1+eps} is how the
+   1/eps pole enters), so we take Im at eps->0 — Im(eps) must NOT be mistaken for
+   an imaginary monomial exponent.
+
+   planR.md R2: a monomial exponent may also carry a declared kinematic symbol
+   (e.g. a dimension/mass).  Those are REAL, but Im[sym] stays unevaluated, so a
+   bare PossibleZeroQ[Im[sym]] is False and would spuriously flag hasImagA=True
+   (then the realify subtraction yields a still-complex exponent -> liftcomplex
+   $Failed, or Im[sym] leaks into the double-typed C++).  Declare the spec's
+   KinematicSymbols real before taking Im so only genuinely complex literals
+   survive. *)
+imagMonoInfo[spec_, eps_] := Module[{realSyms, exps, imA},
+  realSyms = Lookup[spec, "KinematicSymbols", {}];
+  exps     = spec["MonomialExponents"] /. If[eps =!= None, eps -> 0, {}];
+  imA = If[ListQ[realSyms] && Length[realSyms] > 0,
+    Assuming[Element[realSyms, Reals], Simplify[Im[exps]]],
+    Im[exps]];
+  {imA, AnyTrue[imA, (!TrueQ[PossibleZeroQ[#]]) &]}];
+
+(* Realify A by SUBTRACTING its eps-free imaginary part (NOT MapAt[Re], which
+   would wrap the real regulator eps — present in the monomial exponent — in
+   Re[eps] and leak it into the double-typed C++).  MUST run BEFORE any eps-
+   pinning: on the symbolic spec the subtraction is EXACT
+   ((-1+eps+i g) - i g -> -1+eps, a true Real); after pinning eps to a float it
+   would leave Complex[float, 0.] (machine-zero imaginary that does not reduce to
+   Real) and leak cx(...) into the domain indicator.  (planAXpDIVv2.md §4.2.) *)
+realifyMonoA[spec_, imA_] := MapAt[# - I*imA &, spec, {Key["MonomialExponents"]}];
+
+(* --------------------------------------------------------------------------
    emitBaseFuncBody — the shared C++ body for a "base" integrand function:
    the signature, log_y[] setup, the per-polynomial monomial sums, the
    prefactor assignment, and the polynomial-exponent product.  Does NOT emit
@@ -2303,14 +2402,19 @@ liftedDomainBooleWL[dc_Association, vv_List] := Module[
 emitBaseFuncBody[funcName_String, comment_String, resultVar_String,
                  flatPolys_List, polyExps_List, prefactor_, dim_Integer,
                  paramMap_Association, domainConstraint_: None,
-                 monoFactorLogs_: None, imagExps_: None] :=
-Module[{funcCode, useSplit},
+                 monoFactorLogs_: None, imagExps_: None,
+                 monomialPhaseLog_: None] :=
+Module[{funcCode, useSplit, useMonoPhase},
   (* SplitRealImag (plan.md §6.3) is active for this function ONLY when an
      imaginary-exponent list is supplied AND some entry is nonzero.  Otherwise
      the Direct product line below is emitted verbatim — so the real-exponent /
      Direct path is byte-identical to the Phase-2 goldens (cross-check #25). *)
   useSplit = ListQ[imagExps] &&
     AnyTrue[imagExps, (!TrueQ[PossibleZeroQ[#]]) &];
+  (* Bare-monomial oscillatory phase from Im(A) (planAXpDIVv2.md §4.4).  Present
+     ONLY in SplitRealImag mode with complex monomial exponents; None (real-A /
+     Direct) -> no monomial phase emitted -> byte-identical (#25). *)
+  useMonoPhase = (monomialPhaseLog =!= None);
   funcCode = "inline cx " <> funcName <>
     "(const double* y, const double* params) {\n";
   funcCode = funcCode <> "    // " <> comment <> "\n";
@@ -2350,28 +2454,57 @@ Module[{funcCode, useSplit},
             std::log(P_j)            (COMPLEX log — BUG 1 fix; NOT std::abs)
           + MonoFactorLog_j          (the dropped tropical monomial factor — L3)
      with MonoFactorLog_j = Const_j + Sum_i Coeffs_{j,i} * log_y[i]. *)
-  If[useSplit,
-    Module[{phaseTerms, mfl, constStr, coeffStr, logPstr, jj},
+  If[useSplit || useMonoPhase,
+    Module[{phaseTerms, mfl, constStr, coeffStr, logPstr, jj, aa, mpl},
       phaseTerms = {};
-      Do[
-        If[!TrueQ[PossibleZeroQ[imagExps[[j]]]],
-          mfl = If[ListQ[monoFactorLogs] && Length[monoFactorLogs] >= j,
-                   monoFactorLogs[[j]], <|"Const" -> 0, "Coeffs" -> {}|>];
-          constStr = mmaToCInternal[N[mfl["Const"]], paramMap];
-          coeffStr = StringJoin@Table[
-            If[TrueQ[PossibleZeroQ[mfl["Coeffs"][[jj]]]], "",
-              " + " <> mmaToCInternal[N[mfl["Coeffs"][[jj]]], paramMap] <>
-              " * log_y[" <> ToString[jj - 1] <> "]"],
-            {jj, Length[mfl["Coeffs"]]}];
-          logPstr = "std::log(P" <> ToString[j - 1] <> ")";
-          AppendTo[phaseTerms,
-            "cx(0.0, " <> mmaToCInternal[N[imagExps[[j]]], paramMap] <> ") * (" <>
-            logPstr <> " + (" <> constStr <> coeffStr <> "))"];
-        ],
-        {j, Length[polyExps]}
+      If[useSplit,
+        Do[
+          If[!TrueQ[PossibleZeroQ[imagExps[[j]]]],
+            mfl = If[ListQ[monoFactorLogs] && Length[monoFactorLogs] >= j,
+                     monoFactorLogs[[j]], <|"Const" -> 0, "Coeffs" -> {}|>];
+            constStr = mmaToCInternal[N[mfl["Const"]], paramMap];
+            coeffStr = StringJoin@Table[
+              If[TrueQ[PossibleZeroQ[mfl["Coeffs"][[jj]]]], "",
+                " + " <> mmaToCInternal[N[mfl["Coeffs"][[jj]]], paramMap] <>
+                " * log_y[" <> ToString[jj - 1] <> "]"],
+              {jj, Length[mfl["Coeffs"]]}];
+            logPstr = "std::log(P" <> ToString[j - 1] <> ")";
+            AppendTo[phaseTerms,
+              "cx(0.0, " <> mmaToCInternal[N[imagExps[[j]]], paramMap] <> ") * (" <>
+              logPstr <> " + (" <> constStr <> coeffStr <> "))"];
+          ],
+          {j, Length[polyExps]}
+        ]
+      ];
+      (* Bare-monomial phase (planAXpDIVv2.md §4.4): ONE oscillatory term
+         i * (Const_A + Sum_a Coeffs_a log_y[a]); Coeffs already carry Im(A) (via
+         Im(A).M, flattened) and the lift constant Const_A = (Im(eaug)_p/m_p) logZ0
+         (0 unlifted).  M0 Test E verified vs NIntegrate to 1.2e-8. *)
+      (* planR.md R5: skip the whole monomial-phase term when its phase flattens
+         to all-zero (Const_A = 0 and every Coeff = 0) — mirrors the per-term
+         PossibleZeroQ skip in the Im(B) loop above.  Otherwise a complex-A sector
+         with a vanishing Im(A).M would emit a dead `* std::exp(cx(0,1)*(0.))`.
+         Real-A sectors never enter this block, so #25 is unaffected either way. *)
+      If[useMonoPhase &&
+         (!TrueQ[PossibleZeroQ[monomialPhaseLog["Const"]]] ||
+           AnyTrue[monomialPhaseLog["Coeffs"], (!TrueQ[PossibleZeroQ[#]]) &]),
+        mpl = monomialPhaseLog;
+        constStr = mmaToCInternal[N[mpl["Const"]], paramMap];
+        coeffStr = StringJoin@Table[
+          If[TrueQ[PossibleZeroQ[mpl["Coeffs"][[aa]]]], "",
+            " + " <> mmaToCInternal[N[mpl["Coeffs"][[aa]]], paramMap] <>
+            " * log_y[" <> ToString[aa - 1] <> "]"],
+          {aa, Length[mpl["Coeffs"]]}];
+        AppendTo[phaseTerms,
+          "cx(0.0, 1.0) * (" <> constStr <> coeffStr <> ")"];
       ];
       If[phaseTerms =!= {},
-        funcCode = funcCode <> "    // SplitRealImag oscillatory phase (Im(B); complex log P + MonoFactorLog)\n";
+        funcCode = funcCode <> "    // SplitRealImag oscillatory phase (" <>
+          Which[
+            useSplit && useMonoPhase,
+              "Im(B); complex log P + MonoFactorLog; + Im(A) monomial phase",
+            useMonoPhase, "Im(A) monomial phase",
+            True, "Im(B); complex log P + MonoFactorLog"] <> ")\n";
         funcCode = funcCode <> "    cx phaseSum = " <>
           StringRiffle[phaseTerms, " + "] <> ";\n";
         funcCode = funcCode <> "    " <> resultVar <> " *= std::exp(phaseSum);\n";
@@ -2466,7 +2599,9 @@ Module[
         sd["Prefactor"], sd["Dimension"], paramMap,
         Lookup[sd, "DomainConstraint", None],
         Lookup[sd, "MonoFactorLog", None],
-        Lookup[sd, "ImagPolyExponents", None]];
+        Lookup[sd, "ImagPolyExponents", None],
+        (* planAXpDIVv2.md §4.4: bare-monomial phase (Im(A)); None real-A -> #25. *)
+        Lookup[sd, "MonomialPhaseLog", None]];
       funcCode = funcCode <> "    return result;\n}\n";
       AppendTo[integrandFuncs, funcCode];
       AppendTo[integrandDims, sd["Dimension"]];
@@ -2651,7 +2786,9 @@ Module[
             (* SplitRealImag phase (planCXLIFTDIV.md §4.3): per-boundary MonoFactorLog
                + sector Im(B); both None on the real path -> byte-identical (#25). *)
             Lookup[bndData, "MonoFactorLog", None],
-            Lookup[ibpSD, "ImagPolyExponents", None]];
+            Lookup[ibpSD, "ImagPolyExponents", None],
+            (* planAXpDIVv2.md §4.5: per-boundary bare-monomial phase (Im(A)). *)
+            Lookup[bndData, "MonomialPhaseLog", None]];
           funcCode = funcCode <> "    return result;\n}\n";
           AppendTo[integrandFuncs, funcCode];
           AppendTo[integrandDims, bndData["Dimension"]];
@@ -2672,7 +2809,8 @@ Module[
             dropDivVarFromDomain[Lookup[ibpSD, "DomainConstraint", None],
                                  ibpSD["DivergentVariable"]],
             Lookup[bndData, "MonoFactorLog", None],
-            Lookup[ibpSD, "ImagPolyExponents", None]];
+            Lookup[ibpSD, "ImagPolyExponents", None],
+            Lookup[bndData, "MonomialPhaseLog", None]];
           funcCode = funcCode <>
             emitLogTail[logIns["VariableTerms"], logIns["PolynomialTerms"],
                         paramMap, True];
@@ -2704,7 +2842,8 @@ Module[
                  indicator, no slot dropped (§4.2). *)
               Lookup[ibpSD, "DomainConstraint", None],
               Lookup[termData, "MonoFactorLog", None],
-              Lookup[ibpSD, "ImagPolyExponents", None]];
+              Lookup[ibpSD, "ImagPolyExponents", None],
+              Lookup[termData, "MonomialPhaseLog", None]];
             funcCodeBase = funcCodeBase <> "    return result;\n}\n";
             AppendTo[integrandFuncs, funcCodeBase];
             AppendTo[integrandDims, termData["Dimension"]];
@@ -2720,7 +2859,8 @@ Module[
               termData["Prefactor"], termData["Dimension"], paramMap,
               Lookup[ibpSD, "DomainConstraint", None],
               Lookup[termData, "MonoFactorLog", None],
-              Lookup[ibpSD, "ImagPolyExponents", None]];
+              Lookup[ibpSD, "ImagPolyExponents", None],
+              Lookup[termData, "MonomialPhaseLog", None]];
             funcCodeLog = funcCodeLog <>
               emitLogTail[logIns["VariableTerms"], logIns["PolynomialTerms"],
                           paramMap, False];
@@ -3727,7 +3867,7 @@ Module[
    integrator, batch, useCuba, vegasOpts, method,
    liftData, isLifted, liftedSpec, originalSpec,
    emptyDomainCount, hasConstList, cxMode, hasImagB,
-   cxSplit, imBList, specForProc},
+   cxSplit, imBList, specForProc, imAList, hasImagA},
 
   runChecks  = OptionValue["RunChecks"];
   verbose    = OptionValue["Verbose"];
@@ -3771,7 +3911,12 @@ Module[
      ImagPolyExponents, so the emitted C++ is byte-identical (#25). *)
   imBList  = Im[integrandSpec["PolynomialExponents"]];
   hasImagB = AnyTrue[imBList, (!TrueQ[PossibleZeroQ[#]]) &];
-  cxSplit  = (cxMode === "SplitRealImag") && hasImagB;
+  (* planAXpDIVv2.md §4.1: the split must ALSO engage when the MONOMIAL exponents
+     A are complex (the bubble at imaginary mu), not only when B is.  imAList is
+     the AUGMENTED Im(A) in lifted mode (aux entry 0, LiftCoefficients:950).
+     See imagMonoInfo for the eps->0 / declare-real rationale (planR.md R2,R6). *)
+  {imAList, hasImagA} = imagMonoInfo[integrandSpec, eps];
+  cxSplit  = (cxMode === "SplitRealImag") && (hasImagB || hasImagA);
 
   (* Lifted-mode fan-dimension assertion (n+1 rays per simplex coordinate). *)
   If[isLifted,
@@ -3805,13 +3950,19 @@ Module[
           epsVal =!= None || eps === None, False,
           method === "IBP", True,
           method === Automatic,
-            (* SplitRealImag x lift: detect divergence on Re(B) — ProcessSectorLifted
-               on the complex spec would classify "complex" ($Failed) and hide the
-               pole (planCXLIFTDIV.md §4.4). *)
+            (* SplitRealImag x lift: detect divergence on Re(A)/Re(B) — Process-
+               SectorLifted on the complex spec would classify "complex" ($Failed)
+               and hide the pole (planCXLIFTDIV.md §4.4 / planAXpDIVv2.md §4.1).
+               Re of an already-real exponent is the identity, so realifying both
+               families when cxSplit is byte-safe; divergence lives in Re only. *)
             AnyTrue[
               Table[ProcessSectorLifted[
                       If[cxSplit,
-                         MapAt[Re, liftedSpec, {Key["PolynomialExponents"]}],
+                         (* realify both families: Re(B), and subtract Im(A) via
+                            realifyMonoA (eps-preserving — see its docstring). *)
+                         realifyMonoA[
+                           MapAt[Re, liftedSpec, {Key["PolynomialExponents"]}],
+                           imAList],
                          liftedSpec],
                       fanData[[1]], fanData[[2, s]],
                       s, liftData, "Eps" -> eps], {s, Length[fanData[[2]]]}],
@@ -3904,6 +4055,12 @@ Module[
        "ImagPolyExponents".  A pinned EpsilonValue is substituted first so the
        flattening exponents are numeric (mirrors the unlifted branch). *)
     specForProc = liftedSpec;
+    (* planAXpDIVv2.md §4.2: realify Im(A) on the same footing as Re(B) (clears
+       liftcomplex).  realifyMonoA MUST run BEFORE the eps-pinning below — see its
+       docstring (the symbolic subtraction is exact; pinning first leaks a
+       Complex[float, 0.] into the domain indicator). *)
+    If[cxSplit && hasImagA,
+      specForProc = realifyMonoA[specForProc, imAList]];
     If[epsVal =!= None && eps =!= None,
       specForProc = MapAt[# /. eps -> epsVal &, specForProc, {Key["MonomialExponents"]}];
       specForProc = MapAt[# /. eps -> epsVal &, specForProc, {Key["PolynomialExponents"]}]
@@ -3916,7 +4073,9 @@ Module[
         Module[{sd},
           sd = ProcessSectorLifted[specForProc, dualVertices,
                                    simplexList[[s]], s, liftData,
-                                   "Eps" -> eps, "Verbose" -> verbose];
+                                   "Eps" -> eps, "Verbose" -> verbose,
+                                   "ImagMonoExps" ->
+                                     If[cxSplit && hasImagA, imAList, None]];
           Which[
             sd === $Failed,
               allSectorData = $Failed;  Throw[Null],
@@ -3956,18 +4115,28 @@ Module[
     (* ---- Standard (unlifted) mode ---- *)
     allSectorData = Table[
       Module[{sd, specToUse},
+        specToUse = integrandSpec;
+        (* SplitRealImag (plan.md §6.3 / planAXpDIVv2.md §4.2): decompose on
+           Re(B) and Re(A); reattach Im(B); attach the Im(A) monomial phase via
+           the ProcessSector "ImagMonoExps" option (computed with the sector's M
+           and a_eff).  Real-A / Direct -> option None -> no monomial phase.
+           realifyMonoA runs BEFORE any eps-pinning so the subtraction is exact —
+           see its docstring. *)
+        If[cxSplit && hasImagA,
+          specToUse = realifyMonoA[specToUse, imAList]];
         specToUse = If[epsVal =!= None && eps =!= None,
-          MapAt[# /. eps -> epsVal &, integrandSpec,
+          MapAt[# /. eps -> epsVal &, specToUse,
                 {Key["MonomialExponents"]}] //
           MapAt[# /. eps -> epsVal &, #,
                 {Key["PolynomialExponents"]}] &,
-          integrandSpec
+          specToUse
         ];
-        (* SplitRealImag (plan.md §6.3): decompose on Re(B); reattach Im(B). *)
         If[cxSplit,
           specToUse = MapAt[Re, specToUse, {Key["PolynomialExponents"]}]];
         sd = ProcessSector[specToUse, dualVertices,
-                           simplexList[[s]], s, "Verbose" -> verbose];
+                           simplexList[[s]], s, "Verbose" -> verbose,
+                           "ImagMonoExps" ->
+                             If[cxSplit && hasImagA, imAList, None]];
         If[cxSplit && AssociationQ[sd] && !TrueQ[sd["IsDivergent"]],
           sd["ImagPolyExponents"] = imBList];
         sd
@@ -3984,6 +4153,18 @@ Module[
       (AssociationQ[#] && !#["IsDivergent"]) &];
     divergentSectors  = Select[allSectorData,
       (AssociationQ[#] && #["IsDivergent"]) &];
+
+    (* planR.md R1: SplitRealImag (Im(A) and/or Im(B)) on an UNLIFTED divergent
+       integral is not phase-aware on this inline subtraction path — the divergent
+       branch of ProcessSector omits MonomialPhaseLog and ImagPolyExponents is
+       reattached only for convergent sectors, so a divergent complex sector flows
+       phase-less into the subtraction machinery.  Same limitation as the lifted
+       branch (line 4072 / planCXLIFTDIV.md C1); refuse cleanly rather than emit a
+       phase-less (wrong) Laurent.  (Method Automatic routes complex+divergent to
+       the phase-aware IBP driver above; "None"/"Subtraction" and eps===None land
+       here.) *)
+    If[cxSplit && Length[divergentSectors] > 0,
+      Message[TropicalEval::splitliftdiv];  Return[$Failed]];
 
     If[verbose,
       Print["  ", Length[convergentSectors], " convergent, ",
@@ -4780,7 +4961,7 @@ Module[
   {eps, n, ibpData, terms, clearedPolys, detM, pfBase,
    divVars, ck, rk, aVals, polyExps,
    a0, a1, B0, B1, ak, ak2,
-   boundaryData, ibpTermsProcessed, lmf,
+   boundaryData, ibpTermsProcessed, lmf, lmp,
    k},
 
   eps = integrandSpec["RegulatorSymbol"];
@@ -4791,6 +4972,10 @@ Module[
      per IBP piece by dividing by that piece's own flattening alpha0.  None for
      real / unlifted sectors -> no phase emitted -> byte-identical (#25). *)
   lmf = Lookup[sectorData, "LiftedMonoFactor", None];
+  (* LiftedMonoPhase (planAXpDIVv2.md §4.3): the un-flattened bare-monomial phase
+     numerator (Im(A)), re-flattened per IBP piece exactly like lmf.  None for
+     real-A sectors -> no monomial phase emitted -> byte-identical (#25). *)
+  lmp = Lookup[sectorData, "LiftedMonoPhase", None];
 
   (* Nested-divergence guard (G-B scope): the boundary construction (Step 2)
      and the driver's Laurent assembly support a SINGLE divergent variable per
@@ -4829,21 +5014,29 @@ Module[
 
   k = divVars[[1]];
 
-  (* SplitRealImag x divergence sanity (planCXLIFTDIV.md §9): the per-piece phase
-     and the brought-down complex IBP coefficient assume the divergent direction
-     carries NO imaginary monomial-factor exponent — else the real 1/eps pole
+  (* SplitRealImag x divergence sanity (planCXLIFTDIV.md §9 / planAXpDIVv2.md §4.5):
+     the per-piece phase and the brought-down complex IBP coefficient assume the
+     divergent direction carries NO imaginary exponent — else the real 1/eps pole
      acquires an imaginary shift (c_k eps + i C_k) and a self-consistent (non-real-
-     pole) assembly is required.  For the supported (Case A) scope C_k = 0 (the
-     real pole is preserved); refuse cleanly otherwise rather than emit a wrong
-     pole.  Absent on real / unlifted sectors (lmf===None) -> no-op (#25). *)
-  If[lmf =!= None,
-    Module[{imB = Lookup[sectorData, "ImagPolyExponents", None], ckImag},
-      If[ListQ[imB],
-        ckImag = Sum[imB[[j]] * lmf["DExp"][[j, k]], {j, Length[lmf["DExp"]]}];
-        If[!TrueQ[PossibleZeroQ[ckImag]],
-          Message[TropicalEval::splitdivmono, sectorData["ConeIndex"], ckImag];
-          Return[$Failed]
-        ]
+     pole) assembly is required.  Two sources contribute to that imaginary shift in
+     slot k: the dropped tropical MONOMIAL FACTOR (Im(B).D, planCXLIFTDIV) and the
+     bare MONOMIAL phase (Im(A); planAXpDIVv2 — the Im(eaug) numerator Num_k).  For
+     the supported (Case A) scope both vanish (the real pole is preserved); refuse
+     cleanly otherwise.  Absent on real / unlifted sectors (lmf===None AND
+     lmp===None) -> no-op (#25).
+     planR.md R4: fire whenever EITHER phase source is present — do not nest the
+     lmp (Im(A)) check inside lmf =!= None.  Today lmf accompanies lmp on every
+     divergent lifted sector (liftedMonoFactorNum is computed unconditionally), but
+     a future sector carrying LiftedMonoPhase without LiftedMonoFactor would
+     otherwise skip this Case-B refusal and emit a silently wrong complex pole. *)
+  If[lmf =!= None || lmp =!= None,
+    Module[{imB = Lookup[sectorData, "ImagPolyExponents", None], ckImag = 0},
+      If[ListQ[imB] && lmf =!= None,
+        ckImag += Sum[imB[[j]] * lmf["DExp"][[j, k]], {j, Length[lmf["DExp"]]}]];
+      If[lmp =!= None, ckImag += lmp["Num"][[k]]];
+      If[!TrueQ[PossibleZeroQ[ckImag]],
+        Message[TropicalEval::splitdivmono, sectorData["ConeIndex"], ckImag];
+        Return[$Failed]
       ]
     ]
   ];
@@ -4866,7 +5059,7 @@ Module[
   (* Boundary polynomials: Q_j with y_k set to 1.
      This keeps ALL monomials but drops the y_k coordinate. *)
   Module[{ndVars, bndPolys, bndA0, bndFlatPolys, bndPrefactor, bndDim,
-          bndLogInsertions, bndMonoFactorLog},
+          bndLogInsertions, bndMonoFactorLog, bndMonoPhaseLog},
     ndVars = DeleteCases[Range[n], k];
     bndDim = n - 1;
 
@@ -4919,14 +5112,22 @@ Module[
                             {i, bndDim}]|>,
         {j, Length[clearedPolys]}]];
 
+    (* Per-piece bare-monomial phase (planAXpDIVv2.md §4.5): single oscillatory
+       term re-flattened to the boundary's bndA0 (slot k dropped, log y_k = 0).
+       None when not a lifted complex-A sector. *)
+    bndMonoPhaseLog = If[lmp === None, None,
+      <|"Const"  -> lmp["Const"],
+        "Coeffs" -> Table[lmp["Num"][[ndVars[[i]]]] / bndA0[[i]], {i, bndDim}]|>];
+
     boundaryData = <|
-      "FlatPolys"      -> bndFlatPolys,
-      "Prefactor"      -> bndPrefactor,
-      "Dimension"      -> bndDim,
-      "PolyExponents"  -> B0,
-      "Avals"          -> bndA0,
-      "LogInsertions"  -> bndLogInsertions,
-      "MonoFactorLog"  -> bndMonoFactorLog
+      "FlatPolys"        -> bndFlatPolys,
+      "Prefactor"        -> bndPrefactor,
+      "Dimension"        -> bndDim,
+      "PolyExponents"    -> B0,
+      "Avals"            -> bndA0,
+      "LogInsertions"    -> bndLogInsertions,
+      "MonoFactorLog"    -> bndMonoFactorLog,
+      "MonomialPhaseLog" -> bndMonoPhaseLog
     |>;
   ];
 
@@ -4934,7 +5135,7 @@ Module[
   ibpTermsProcessed = Table[
     Module[{term, alpha, alpha0, alpha1, termPolyExps, tB0, tB1,
             coeff, coeff0, coeff1, flatPrefactor, flatPolys,
-            logInsertions, termMonoFactorLog},
+            logInsertions, termMonoFactorLog, termMonoPhaseLog},
       term         = terms[[t]];
       alpha        = term["NewExponents"];
       termPolyExps = term["PolyExponents"];
@@ -4984,6 +5185,12 @@ Module[
             "Coeffs" -> Table[lmf["DExp"][[j, i]] / alpha0[[i]], {i, n}]|>,
           {j, Length[clearedPolys]}]];
 
+      (* Per-piece bare-monomial phase (planAXpDIVv2.md §4.5): IBP terms keep all
+         n coords; re-flatten Num_i by this term's alpha0_i. *)
+      termMonoPhaseLog = If[lmp === None, None,
+        <|"Const"  -> lmp["Const"],
+          "Coeffs" -> Table[lmp["Num"][[i]] / alpha0[[i]], {i, n}]|>];
+
       (* Log insertion sum *)
       logInsertions = <|
         "VariableTerms" -> Table[
@@ -5006,7 +5213,8 @@ Module[
         "LogInsertions"  -> logInsertions,
         "Alpha0"         -> alpha0,
         "Alpha1"         -> alpha1,
-        "MonoFactorLog"  -> termMonoFactorLog
+        "MonoFactorLog"  -> termMonoFactorLog,
+        "MonomialPhaseLog" -> termMonoPhaseLog
       |>
     ],
     {t, Length[terms]}
@@ -5517,7 +5725,7 @@ Module[
    mcRawResults, finalResults,
    runChecks, verbose, nSamples, nThreads, workDir,
    integrator, batch, useCuba, vegasOpts,
-   cxMode, imBList, hasImagB, cxSplit, specForProc},
+   cxMode, imBList, hasImagB, cxSplit, specForProc, imAList, hasImagA},
 
   runChecks  = OptionValue["RunChecks"];
   verbose    = OptionValue["Verbose"];
@@ -5540,9 +5748,18 @@ Module[
   If[cxMode === Automatic, cxMode = "Direct"];
   imBList    = Im[integrandSpec["PolynomialExponents"]];
   hasImagB   = AnyTrue[imBList, (!TrueQ[PossibleZeroQ[#]]) &];
-  cxSplit    = isLifted && (cxMode === "SplitRealImag") && hasImagB;
-  specForProc = If[cxSplit,
-    MapAt[Re, integrandSpec, {Key["PolynomialExponents"]}], integrandSpec];
+  (* planAXpDIVv2.md §4.1: engage on complex MONOMIAL exponents A too.  See
+     imagMonoInfo for the eps->0 / declare-real rationale (planR.md R2,R6). *)
+  {imAList, hasImagA} = imagMonoInfo[integrandSpec, eps];
+  cxSplit    = isLifted && (cxMode === "SplitRealImag") && (hasImagB || hasImagA);
+  specForProc = integrandSpec;
+  If[cxSplit,
+    specForProc = MapAt[Re, specForProc, {Key["PolynomialExponents"]}]];
+  (* Subtract the eps-free Im(A) so the real regulator eps in the monomial
+     exponent is preserved for the pole machinery (planAXpDIVv2.md §4.2 / see
+     realifyMonoA). *)
+  If[cxSplit && hasImagA,
+    specForProc = realifyMonoA[specForProc, imAList]];
   integrator = normalizeIntegrator[OptionValue["Integrator"]];
   batch      = TrueQ[OptionValue["Batch"]];
   useCuba    = (integrator === "VEGAS");
@@ -5586,7 +5803,8 @@ Module[
         Do[
           Module[{sd},
             sd = ProcessSectorLifted[specForProc, dualVertices,
-                   simplexList[[s]], s, liftData, "Eps" -> eps, "Verbose" -> False];
+                   simplexList[[s]], s, liftData, "Eps" -> eps, "Verbose" -> False,
+                   "ImagMonoExps" -> If[cxSplit && hasImagA, imAList, None]];
             Which[
               sd === $Failed, Sow[$Failed]; Throw[Null],
               AssociationQ[sd] && KeyExistsQ[sd, "EmptyDomain"] && sd["EmptyDomain"],
@@ -5594,7 +5812,9 @@ Module[
               True,
                 (* SplitRealImag: reattach Im(B) to BOTH convergent and divergent
                    lifted sectors (planCXLIFTDIV.md §4.4); the convergent emitter
-                   and IBPProcessSector pick it up as the phase. *)
+                   and IBPProcessSector pick it up as the phase.  Im(A) rides via
+                   MonomialPhaseLog / LiftedMonoPhase attached by ProcessSectorLifted
+                   itself (planAXpDIVv2.md §4.3). *)
                 If[cxSplit, sd["ImagPolyExponents"] = imBList];
                 Sow[sd]
             ]

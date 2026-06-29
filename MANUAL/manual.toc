@@ -16,70 +16,76 @@
 \contentsline {subsection}{\numberline {5.1}Sector Decomposition by Monomial Maps}{7}{subsection.5.1}%
 \contentsline {subsection}{\numberline {5.2}Tropical Factoring (exact)}{7}{subsection.5.2}%
 \contentsline {subsection}{\numberline {5.3}Effective Exponents and Convergence Gate}{7}{subsection.5.3}%
-\contentsline {subsection}{\numberline {5.4}Flattening}{7}{subsection.5.4}%
+\contentsline {subsection}{\numberline {5.4}Flattening}{8}{subsection.5.4}%
 \contentsline {subsection}{\numberline {5.5}Divergence Regulation: Tropical Subtraction (Module 2)}{8}{subsection.5.5}%
 \contentsline {subsection}{\numberline {5.6}Divergence Regulation: IBP (Module 2b, default)}{8}{subsection.5.6}%
 \contentsline {subsection}{\numberline {5.7}Auxiliary-Variable Lifting (Module 1b)}{9}{subsection.5.7}%
 \contentsline {subsubsection}{\numberline {5.7.1}Anchor Selection ($k^*$ rule)}{9}{subsubsection.5.7.1}%
 \contentsline {paragraph}{Decision order.}{9}{equation.13}%
 \contentsline {subsubsection}{\numberline {5.7.2}Pivot Selection and Delta Elimination}{9}{subsubsection.5.7.2}%
-\contentsline {paragraph}{Pivot ranking (constant-term preservation first):}{9}{equation.15}%
+\contentsline {paragraph}{Pivot ranking (constant-term preservation first):}{10}{equation.15}%
 \contentsline {paragraph}{Domain constraint.}{10}{Item.3}%
 \contentsline {subsubsection}{\numberline {5.7.3}\texttt {HasConstantTerm = False}: the L5 Caveat}{10}{subsubsection.5.7.3}%
 \contentsline {subsubsection}{\numberline {5.7.4}Lifting a Divergent Integral (Case A)}{10}{subsubsection.5.7.4}%
 \contentsline {paragraph}{$\varepsilon $-aware classification.}{10}{subsubsection.5.7.4}%
 \contentsline {paragraph}{Prefactor $\varepsilon $-dependence.}{10}{subsubsection.5.7.4}%
-\contentsline {paragraph}{Case A vs Case B.}{10}{subsubsection.5.7.4}%
-\contentsline {paragraph}{Two routes.}{10}{subsubsection.5.7.4}%
+\contentsline {paragraph}{Case A vs Case B.}{11}{subsubsection.5.7.4}%
+\contentsline {paragraph}{Two routes.}{11}{subsubsection.5.7.4}%
 \contentsline {subsection}{\numberline {5.8}Complex Exponents in Codegen}{11}{subsection.5.8}%
 \contentsline {paragraph}{Fix A (BUG 1, \texttt {TMCv2\_BUG\_LOG}).}{11}{equation.18}%
 \contentsline {paragraph}{Fix B (L3, \texttt {lift\_error\_log}).}{11}{equation.18}%
 \contentsline {paragraph}{\texttt {SplitRealImag} caveat.}{11}{equation.19}%
-\contentsline {subsection}{\numberline {5.9}High-Dimensional VEGAS Sizing (\texttt {resolveVegasSizing})}{11}{subsection.5.9}%
-\contentsline {section}{\numberline {6}Core File Reference}{12}{section.6}%
-\contentsline {subsection}{\numberline {6.1}\texttt {tropical\_fan.wl}}{12}{subsection.6.1}%
-\contentsline {subsection}{\numberline {6.2}\texttt {tropical\_eval.wl} --- Module 1: \texttt {ProcessSector} and \texttt {FlattenSector}}{12}{subsection.6.2}%
-\contentsline {paragraph}{\texttt {CheckFlatteningMagnitude[sectorData, nSamples]}.}{13}{lstnumber.-3.2}%
-\contentsline {subsection}{\numberline {6.3}\texttt {tropical\_eval.wl} --- Module 1b: Lifting}{13}{subsection.6.3}%
-\contentsline {subsection}{\numberline {6.4}\texttt {tropical\_eval.wl} --- Module 2: Tropical Subtraction}{13}{subsection.6.4}%
-\contentsline {subsection}{\numberline {6.5}\texttt {tropical\_eval.wl} --- Module 2b: IBP (default method)}{13}{subsection.6.5}%
-\contentsline {subsection}{\numberline {6.6}\texttt {tropical\_eval.wl} --- Module 3: Unified C++ Codegen}{14}{subsection.6.6}%
-\contentsline {paragraph}{\texttt {MmaToC[expr, paramMap]}.}{14}{subsection.6.6}%
-\contentsline {paragraph}{\texttt {GenerateCpp[convSectors, divSectors, spec, outputFile, opts]}.}{14}{equation.20}%
-\contentsline {paragraph}{Sampler options (Table~\ref {tab:sampler}).}{14}{equation.20}%
-\contentsline {paragraph}{Batch mode (\texttt {"Batch" -> True}).}{14}{table.1}%
-\contentsline {paragraph}{CUBA detection and threading.}{15}{table.1}%
-\contentsline {subsection}{\numberline {6.7}\texttt {tropical\_eval.wl} --- Module 4: Unified Driver}{15}{subsection.6.7}%
-\contentsline {paragraph}{Full option list.}{15}{lstnumber.-4.1}%
-\contentsline {paragraph}{\texttt {EvaluateTropicalMCLifted} signature and options.}{16}{lstnumber.-4.1}%
-\contentsline {subsection}{\numberline {6.8}\texttt {tropical\_eval.wl} --- Module 5: Validation}{16}{subsection.6.8}%
-\contentsline {section}{\numberline {7}Data Structures}{17}{section.7}%
-\contentsline {subsection}{\numberline {7.1}\texttt {IntegrandSpec}}{17}{subsection.7.1}%
-\contentsline {subsection}{\numberline {7.2}\texttt {SectorData} (from \texttt {ProcessSector})}{17}{subsection.7.2}%
-\contentsline {subsection}{\numberline {7.3}Lifted \texttt {SectorData} extensions (from \texttt {ProcessSectorLifted})}{18}{subsection.7.3}%
-\contentsline {subsection}{\numberline {7.4}\texttt {LiftData} (from \texttt {LiftCoefficients})}{18}{subsection.7.4}%
-\contentsline {subsection}{\numberline {7.5}\texttt {DivergentSectorData} (from \texttt {ProcessDivergentSector})}{18}{subsection.7.5}%
-\contentsline {subsection}{\numberline {7.6}\texttt {IBPSectorData} (from \texttt {IBPProcessSector})}{19}{subsection.7.6}%
-\contentsline {section}{\numberline {8}Error Messages (\texttt {TropicalEval::*})}{20}{section.8}%
-\contentsline {section}{\numberline {9}Limitations and Caveats}{21}{section.9}%
-\contentsline {section}{\numberline {10}Worked Examples}{22}{section.10}%
-\contentsline {subsection}{\numberline {10.1}v3 Capstone: Divergent + Complex Exponents (Ex-V3a)}{22}{subsection.10.1}%
-\contentsline {subsection}{\numberline {10.2}v3 Capstone: Small Complex Coefficient, Lifted + VEGAS (Ex-V3b)}{23}{subsection.10.2}%
-\contentsline {subsection}{\numberline {10.3}v3 Capstone: Kinematic Scan, Batched VEGAS (Ex-V3c)}{23}{subsection.10.3}%
-\contentsline {subsection}{\numberline {10.4}Minimal Convergent Integral}{24}{subsection.10.4}%
-\contentsline {subsection}{\numberline {10.5}Divergent Integral with Regulator}{24}{subsection.10.5}%
-\contentsline {subsection}{\numberline {10.6}Lifting a Small Coefficient}{24}{subsection.10.6}%
-\contentsline {subsection}{\numberline {10.7}Lifting a Divergent Integral (Case A)}{25}{subsection.10.7}%
-\contentsline {section}{\numberline {11}Validation and Testing}{26}{section.11}%
-\contentsline {subsection}{\numberline {11.1}V3 Cross-Check Suite (TEST/, 45 named checks)}{26}{subsection.11.1}%
-\contentsline {paragraph}{Adversarial verification principle.}{26}{subsection.11.1}%
-\contentsline {subsection}{\numberline {11.2}Examples 1--23 (from Tree A and Tree B)}{27}{subsection.11.2}%
-\contentsline {subsection}{\numberline {11.3}FIESTA Cross-Checks (\texttt {CC/})}{27}{subsection.11.3}%
-\contentsline {section}{\numberline {12}Why the Pipeline Works}{27}{section.12}%
-\contentsline {paragraph}{Tropical factoring is exact.}{27}{section.12}%
-\contentsline {paragraph}{Flattening is a change of variables.}{27}{section.12}%
-\contentsline {paragraph}{Lifting is an identity.}{27}{section.12}%
-\contentsline {paragraph}{Pole extraction is correct.}{27}{section.12}%
-\contentsline {paragraph}{The exactness invariant enables unattended correctness gates.}{28}{section.12}%
-\contentsline {section}{\numberline {13}Dependencies}{28}{section.13}%
-\contentsline {section}{\numberline {14}Command-Line Execution}{28}{section.14}%
+\contentsline {subsection}{\numberline {5.9}Auxiliary Lifting with Complex Exponents (\texttt {SplitRealImag}~$\times $~lift)}{12}{subsection.5.9}%
+\contentsline {paragraph}{The obstruction.}{12}{subsection.5.9}%
+\contentsline {paragraph}{Realify before lifting, restore the phase after.}{12}{subsection.5.9}%
+\contentsline {paragraph}{The monomial phase from $\mathrm {Im}(A)$.}{12}{subsection.5.9}%
+\contentsline {paragraph}{Divergent complex monomials (Case A vs Case B).}{13}{equation.20}%
+\contentsline {paragraph}{Refusals (clean \texttt {\$Failed}, never a wrong number).}{13}{equation.20}%
+\contentsline {subsection}{\numberline {5.10}High-Dimensional VEGAS Sizing (\texttt {resolveVegasSizing})}{13}{subsection.5.10}%
+\contentsline {section}{\numberline {6}Core File Reference}{13}{section.6}%
+\contentsline {subsection}{\numberline {6.1}\texttt {tropical\_fan.wl}}{13}{subsection.6.1}%
+\contentsline {subsection}{\numberline {6.2}\texttt {tropical\_eval.wl} --- Module 1: \texttt {ProcessSector} and \texttt {FlattenSector}}{14}{subsection.6.2}%
+\contentsline {paragraph}{\texttt {CheckFlatteningMagnitude[sectorData, nSamples]}.}{14}{lstnumber.-3.2}%
+\contentsline {subsection}{\numberline {6.3}\texttt {tropical\_eval.wl} --- Module 1b: Lifting}{14}{subsection.6.3}%
+\contentsline {subsection}{\numberline {6.4}\texttt {tropical\_eval.wl} --- Module 2: Tropical Subtraction}{15}{subsection.6.4}%
+\contentsline {subsection}{\numberline {6.5}\texttt {tropical\_eval.wl} --- Module 2b: IBP (default method)}{15}{subsection.6.5}%
+\contentsline {subsection}{\numberline {6.6}\texttt {tropical\_eval.wl} --- Module 3: Unified C++ Codegen}{15}{subsection.6.6}%
+\contentsline {paragraph}{\texttt {MmaToC[expr, paramMap]}.}{15}{subsection.6.6}%
+\contentsline {paragraph}{\texttt {GenerateCpp[convSectors, divSectors, spec, outputFile, opts]}.}{16}{equation.21}%
+\contentsline {paragraph}{Sampler options (Table~\ref {tab:sampler}).}{16}{equation.21}%
+\contentsline {paragraph}{Batch mode (\texttt {"Batch" -> True}).}{16}{table.1}%
+\contentsline {paragraph}{CUBA detection and threading.}{16}{table.1}%
+\contentsline {subsection}{\numberline {6.7}\texttt {tropical\_eval.wl} --- Module 4: Unified Driver}{17}{subsection.6.7}%
+\contentsline {paragraph}{Full option list.}{17}{lstnumber.-4.1}%
+\contentsline {paragraph}{\texttt {EvaluateTropicalMCLifted} signature and options.}{17}{lstnumber.-4.1}%
+\contentsline {subsection}{\numberline {6.8}\texttt {tropical\_eval.wl} --- Module 5: Validation}{18}{subsection.6.8}%
+\contentsline {section}{\numberline {7}Data Structures}{18}{section.7}%
+\contentsline {subsection}{\numberline {7.1}\texttt {IntegrandSpec}}{18}{subsection.7.1}%
+\contentsline {subsection}{\numberline {7.2}\texttt {SectorData} (from \texttt {ProcessSector})}{19}{subsection.7.2}%
+\contentsline {subsection}{\numberline {7.3}Lifted \texttt {SectorData} extensions (from \texttt {ProcessSectorLifted})}{19}{subsection.7.3}%
+\contentsline {subsection}{\numberline {7.4}\texttt {LiftData} (from \texttt {LiftCoefficients})}{20}{subsection.7.4}%
+\contentsline {subsection}{\numberline {7.5}\texttt {DivergentSectorData} (from \texttt {ProcessDivergentSector})}{20}{subsection.7.5}%
+\contentsline {subsection}{\numberline {7.6}\texttt {IBPSectorData} (from \texttt {IBPProcessSector})}{21}{subsection.7.6}%
+\contentsline {section}{\numberline {8}Error Messages (\texttt {TropicalEval::*})}{22}{section.8}%
+\contentsline {section}{\numberline {9}Limitations and Caveats}{23}{section.9}%
+\contentsline {section}{\numberline {10}Worked Examples}{24}{section.10}%
+\contentsline {subsection}{\numberline {10.1}v3 Capstone: Divergent + Complex Exponents (Ex-V3a)}{24}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}v3 Capstone: Small Complex Coefficient, Lifted + VEGAS (Ex-V3b)}{25}{subsection.10.2}%
+\contentsline {subsection}{\numberline {10.3}v3 Capstone: Kinematic Scan, Batched VEGAS (Ex-V3c)}{25}{subsection.10.3}%
+\contentsline {subsection}{\numberline {10.4}Minimal Convergent Integral}{26}{subsection.10.4}%
+\contentsline {subsection}{\numberline {10.5}Divergent Integral with Regulator}{26}{subsection.10.5}%
+\contentsline {subsection}{\numberline {10.6}Lifting a Small Coefficient}{27}{subsection.10.6}%
+\contentsline {subsection}{\numberline {10.7}Lifting a Divergent Integral (Case A)}{27}{subsection.10.7}%
+\contentsline {section}{\numberline {11}Validation and Testing}{28}{section.11}%
+\contentsline {subsection}{\numberline {11.1}V3 Cross-Check Suite (TEST/, 45 named checks)}{28}{subsection.11.1}%
+\contentsline {paragraph}{Adversarial verification principle.}{29}{subsection.11.1}%
+\contentsline {subsection}{\numberline {11.2}Examples 1--23 (from Tree A and Tree B)}{30}{subsection.11.2}%
+\contentsline {subsection}{\numberline {11.3}FIESTA Cross-Checks (\texttt {CC/})}{30}{subsection.11.3}%
+\contentsline {section}{\numberline {12}Why the Pipeline Works}{30}{section.12}%
+\contentsline {paragraph}{Tropical factoring is exact.}{30}{section.12}%
+\contentsline {paragraph}{Flattening is a change of variables.}{30}{section.12}%
+\contentsline {paragraph}{Lifting is an identity.}{30}{section.12}%
+\contentsline {paragraph}{Pole extraction is correct.}{30}{section.12}%
+\contentsline {paragraph}{The exactness invariant enables unattended correctness gates.}{31}{section.12}%
+\contentsline {section}{\numberline {13}Dependencies}{31}{section.13}%
+\contentsline {section}{\numberline {14}Command-Line Execution}{31}{section.14}%

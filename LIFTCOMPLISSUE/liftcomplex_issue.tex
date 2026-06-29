@@ -1,0 +1,248 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[colorlinks=true,linkcolor=blue,urlcolor=blue]{hyperref}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{black!4},
+  columns=fullflexible,
+  keepspaces=true,
+}
+
+\newcommand{\Real}{\operatorname{Re}}
+\newcommand{\Imag}{\operatorname{Im}}
+\newcommand{\atil}{\tilde{a}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{\textbf{The \texttt{liftcomplex} obstruction:\\
+why auxiliary--variable lifting fails for the bubble at imaginary $\mu$}}
+\author{Tropical Monte Carlo (FINAL4) --- planAU Phase-0 finding}
+\date{2026-06-29}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The auxiliary--variable \emph{lift} (v3 engine, \code{ProcessSectorLifted}) folds a
+large kinematic coefficient into the Newton polytope so the tropical sampling map
+matches a hierarchical integrand. It is the intended fix for the noisy
+imaginary--$\mu$ ``principal series'' (FLAG~B). On the actual bubble integrand at
+imaginary $\mu$ the lift refuses with \code{TropicalEval::liftcomplex} on every
+cone. This note explains \emph{exactly why}: the lift introduces a real
+\emph{domain inequality} that the ordinary (unlifted) algorithm does not have, and
+that inequality is governed by an effective exponent $\atil$ built from
+\emph{both} the polynomial exponents $B_j$ \emph{and} the monomial exponents
+$m_i$. The \code{SplitRealImag} complex--exponent mode removes the imaginary part of
+$B_j$ before the inequality is formed, but \emph{not} that of $m_i$; the bubble at
+imaginary $\mu$ is the first integrand with complex \emph{monomial} exponents, so
+$\atil$ stays complex and the lift aborts. The flattening (change of variables) is
+\emph{not} the broken step. A one--character experiment confirms the diagnosis and
+points to a localized fix.
+\end{abstract}
+
+\section{Setup and notation}
+
+Each presector integrand has the form
+\begin{equation}
+  I \;=\; \int_{[0,\infty)^n}\; \prod_{i=1}^{n} x_i^{\,m_i}\;
+          \prod_{j} P_j(x)^{\,B_j}\; \mathrm{d}^n x ,
+  \label{eq:integrand}
+\end{equation}
+with \emph{monomial exponents} $m_i$ (on the bare powers $x_i^{m_i}$) and
+\emph{polynomial exponents} $B_j$ (on the polynomials $P_j$). For the bubble these
+exponents are functions of the propagator dimensions $\delta_\pm = \tfrac{3}{2}\pm\mu$
+and the regulator $d_\epsilon$. For \emph{real} $\mu$ they are real; for
+\emph{imaginary} $\mu$ (the principal series) they are \textbf{complex}, and --- this
+is the crux --- \emph{both} families $m_i$ and $B_j$ acquire nonzero imaginary parts.
+
+\medskip
+\noindent\textbf{Concrete instance.} For \code{bubblepm} presector~1 at $\mu = 3i/2$,
+\[
+  \Imag(m) \;=\; \bigl\{\,-\tfrac32,\ \tfrac32,\ -\tfrac32,\ \tfrac32,\ 3\,\bigr\},
+  \qquad
+  \Imag(B) \neq 0 \ \text{as well.}
+\]
+
+\section{The ordinary algorithm never \emph{decides} on an exponent value}
+
+The tropical decomposition triangulates the dual fan into simplicial cones. In each
+cone it applies a \emph{monomial change of variables}
+\begin{equation}
+  x_i \;=\; \prod_{a} y_a^{\,(M)_{ia}},
+  \label{eq:cov}
+\end{equation}
+where the integer matrix $M$ is fixed by the cone's rays --- i.e.\ by the
+\emph{support} (the set of exponent vectors), \emph{not} by the exponent
+\emph{values}. Substituting \eqref{eq:cov} into \eqref{eq:integrand} and clearing the
+leading monomial from each polynomial is the \emph{flattening} step
+(\code{ProcessSector}). The exponents simply ride along as numbers; the integrand is
+evaluated as $\exp\!\big(B_j \log P_j\big)$, which is well defined for \emph{any}
+complex $B_j$.
+
+\begin{quote}\itshape
+Nothing in the unlifted pipeline asks a yes/no question about an exponent. Complex
+exponents flow through untouched --- which is precisely why the unlifted scan of the
+imaginary--$\mu$ masses completed normally.
+\end{quote}
+
+\section{The lift adds a real \emph{domain inequality}}
+
+To tame a hierarchical coefficient $C\,x^{\alpha}$ the lift rewrites it as
+$c\,z^{k} x^{\alpha}$, promotes the anchor $z$ to a genuine integration variable, and
+pins it with a delta function:
+\begin{equation}
+  C\,x^{\alpha}\ \longrightarrow\ c\,z^{k}x^{\alpha},
+  \qquad
+  I \;=\; \int_{[0,\infty)^{\,n+1}} (\cdots)\;\delta(z-z_0)\,\mathrm{d}z\,\mathrm{d}^n x ,
+  \qquad z_0 = |C|^{1/k}.
+\end{equation}
+One flattens this $(n{+}1)$--dimensional problem and then \textbf{resolves the
+delta}: a pivot variable $y_p$ is chosen and eliminated, folding the integral back to
+$n$ dimensions. That fold--back is the new ingredient. Solving $\delta(z-z_0)$ for the
+pivot turns the sector's domain into a \emph{cut region}, emitted as an indicator
+\begin{equation}
+  \mathrm{Boole}\!\left[\, \log y_p^{\star} \le 0 \,\right],
+  \qquad
+  \log y_p^{\star}
+   \;=\; \frac{\log z_0 - \sum_a \mathrm{ic}_a \,\log y_a}{m_p},
+  \label{eq:indicator}
+\end{equation}
+together with a classification of the sector (\code{HasConstantTerm},
+\code{EmptyDomain}, divergent/convergent). The coefficients in \eqref{eq:indicator}
+and the classification are read off the \textbf{effective exponents} $\atil$ left
+after the delta is resolved.
+
+\paragraph{Why $\atil$ must be real.} Equation~\eqref{eq:indicator} is an
+\emph{inequality}: it carves $[0,1]^d$ into a region that contributes and a region
+that does not. ``Is $(2-3i)\le 0$?'' is meaningless. Hence the lift requires
+$\atil\in\mathbb{R}$. The engine guards this explicitly; when every admissible pivot
+yields a complex $\atil$ it aborts:
+\begin{lstlisting}
+TropicalEval::liftcomplex = "ProcessSectorLifted: cone `1` -- all candidate
+  pivots produce complex atilde; cannot emit a real-valued domain indicator."
+\end{lstlisting}
+
+\paragraph{Crucially, $\atil$ depends on \emph{both} exponent families.} Under the
+change of variables \eqref{eq:cov} the bare factor $\prod_i x_i^{m_i}$ becomes
+\begin{equation}
+  \prod_i x_i^{m_i}
+  \;=\;\prod_a y_a^{\,\sum_i m_i (M)_{ia}},
+  \label{eq:monoshift}
+\end{equation}
+so the new variables $y_a$ inherit exponents $\sum_i m_i (M)_{ia}$ that are
+\textbf{linear in the monomial exponents $m_i$}. These combine with the
+polynomial--derived exponents; the delta resolution then produces
+\begin{equation}
+  \atil \;=\; \atil\big(m,\,B,\,\text{cone geometry}\big),
+  \qquad\text{linear in } m \text{ and } B .
+  \label{eq:atilde}
+\end{equation}
+If \emph{any} contributing exponent is complex, $\atil$ is complex and the
+inequality~\eqref{eq:indicator} is ill posed.
+
+\section{\texttt{SplitRealImag}: the intended fix, wired to only half the inputs}
+
+The engine's mechanism for complex exponents is \code{ComplexExponentMode ->
+"SplitRealImag"}: build the (real) domain map from the \emph{real parts} of the
+exponents, and peel the \emph{imaginary parts} off into a pure oscillatory phase
+\begin{equation}
+  \exp\!\Big(\, i\,\textstyle\sum_j \Imag(B_j)\,\big(\log Q_j + \mathrm{MonoFactorLog}_j\big)\Big)
+\end{equation}
+that multiplies the integrand. A phase does not move the boundary, so
+\eqref{eq:indicator} stays real. This is correct and is validated for complex
+\emph{polynomial} exponents (\code{cc\_21b}, \code{cc\_45}).
+
+The defect is that the split is applied to only one of the two inputs to
+\eqref{eq:atilde}. In \code{EvaluateTropicalMC} (file \code{tropical\_eval.wl},
+$\approx$ lines 3772 and 3814):
+\begin{lstlisting}
+imBList  = Im[integrandSpec["PolynomialExponents"]];      (* polynomial only *)
+hasImagB = AnyTrue[imBList, (! TrueQ[PossibleZeroQ[#]]) &];
+...
+ProcessSectorLifted[
+  MapAt[Re, liftedSpec, {Key["PolynomialExponents"]}],     (* Re of B only;  *)
+  ...                                                       (* m left complex *)
+  "Eps" -> eps]
+\end{lstlisting}
+Only $\Real(B_j)$ is taken; the monomial exponents $m_i$ are passed through
+\textbf{complex}. By \eqref{eq:monoshift}--\eqref{eq:atilde}, $\atil$ is therefore
+\emph{still} complex --- now from the monomial half --- and the \code{liftcomplex}
+guard fires on every cone.
+
+\begin{quote}\itshape
+The bubble at imaginary $\mu$ is the first integrand anyone has lifted whose
+\emph{monomial} exponents are complex; all prior complex tests had complex $B_j$ with
+real $m_i$, so the incomplete split was invisible upstream.
+\end{quote}
+
+\section{Empirical confirmation}
+
+On the \code{bubblepm} $\mu=3i/2$ lifted spec (presector~1; $n{=}5$, so $611$
+six--dimensional cones), processing each cone two ways:
+
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+What is fed to \code{ProcessSectorLifted} & complex $\atil$? & Result \\
+\midrule
+$\Real$ of \emph{polynomial} exponents only \emph{(what the engine does)} & yes & \code{liftcomplex} --- \textbf{every cone fails} \\
+$\Real$ of \emph{both} monomial \emph{and} polynomial exponents & no & \textbf{all 611 cones succeed} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent So the obstruction is \emph{solely} the un--split monomial exponents, and
+making $\atil$ real is sufficient to let the decomposition through. (For reference,
+the unlifted path and an independent \code{NIntegrate} of \eqref{eq:integrand} both
+evaluate this point without issue, giving $\approx 1.27\times10^{-14} +
+1.40\times10^{-15}\,i$.)
+
+\section{What is and is not broken}
+
+\begin{itemize}
+  \item \textbf{Flattening / change of variables --- NOT broken.} It is geometric
+  (fixed by the cone rays), shared verbatim with the unlifted path, and handles
+  complex exponents fine. The imaginary parts \emph{originate} in the flattened
+  exponents via \eqref{eq:monoshift}, but storing complex numbers is harmless.
+  \item \textbf{Delta--resolution / pivot / domain indicator (lift--only) ---
+  broken.} This step needs $\atil\in\mathbb{R}$ to form the
+  inequality~\eqref{eq:indicator} and to classify the sector; with complex $m_i$ it
+  refuses (\code{liftcomplex}).
+\end{itemize}
+
+\section{The fix (sketch)}
+
+Extend \code{SplitRealImag} to treat the monomial exponents on the same footing as
+the polynomial exponents:
+\begin{enumerate}
+  \item \textbf{Decomposition side.} Take $\Real(m_i)$ as well as $\Real(B_j)$ before
+  \code{ProcessSectorLifted}, so $\atil$ in \eqref{eq:atilde} is real and the domain
+  indicator is well posed. \emph{(Shown sufficient above: $611/611$ cones.)}
+  \item \textbf{Phase side.} Carry $\Imag(m_i)$ into the \emph{same} oscillatory phase
+  that already transports $\Imag(B_j)$. Using \eqref{eq:cov},
+  \[
+    \sum_i \Imag(m_i)\,\log x_i
+    \;=\; \sum_a \Big(\textstyle\sum_i \Imag(m_i)\,(M)_{ia}\Big)\log y_a ,
+  \]
+  i.e.\ the monomial imaginary parts contribute
+  $\sum_i \Imag(m_i)(M)_{ia}$ to the phase coefficient of $\log y_a$ in every sector
+  (plus the matching anchor/$\mathrm{MonoFactorLog}$ constant from the lift). This is
+  the part requiring care: it must be \emph{numerically correct}, not merely
+  non--crashing, and must reduce to the current behaviour when $\Imag(m_i)=0$ (so
+  real--$\mu$ and prior complex--$B$ outputs stay byte--identical).
+\end{enumerate}
+The change is local to the lifted \code{SplitRealImag} path and its codegen (both the
+convergent route, e.g.\ \code{bubblepm}, and the divergent IBP / subtraction route,
+e.g.\ \code{bubblepp}); flattening is untouched. Validation should mirror
+\code{cc\_21b}: (a) lifted \code{SplitRealImag} reproduces \code{NIntegrate} of
+\eqref{eq:integrand} to $<1$--$2\%$; (b) dropping the new monomial phase term gives a
+\emph{wrong} answer (so it is load--bearing); (c) real--$\mu$ results are unchanged.
+
+\end{document}

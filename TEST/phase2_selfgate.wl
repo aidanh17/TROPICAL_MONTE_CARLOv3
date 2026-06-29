@@ -216,6 +216,122 @@ Module[{poly, vars, eps2, spec, lift, ls, ld, specRe, imB, fan, verts,
   ]
 ];
 
+(* #43 corpus, complex-MONOMIAL (A) lifted+divergent (planAXpDIVv2.md §5 / planR.md
+   R3): an exact spec (A_2 = -1/2 - 3/2 i exact, eps symbolic, Case A) must carry
+   EXACT per-IBP-piece MonomialPhaseLog (Const_A = (Im(eaug)_p/m_p) logZ0 and Num =
+   Im(A).M) and the LiftedMonoPhase numerator all the way to MmaToC.
+
+   planR.md R3: the FIXTURE is chosen so Const_A != 0 — the headline novel term of
+   planAXpDIVv2.  The cc_47-style fixture (extreme coeff + lift on x1, complex
+   weight on the NON-divergent x2) gives Const_A = 0 (the imaginary weight does not
+   project onto the pivot), leaving the logZ0 path numerically un-exercised.  Here
+   the EXTREME coefficient (10^6) and the lift pivot are on x2^2 — the variable that
+   carries the complex weight — while the 1/eps divergence stays on x1.  Then
+   Im(eaug)_pivot != 0 (Const_A = (9/4) Log[100]) yet the divergent direction stays
+   real (Num_divDir = 0 -> Case A, IBP succeeds).  payload now includes every
+   "Const" so a regression that drops it / makes it an inexact real turns the test
+   red (vacuous-pass guard); the independent NIntegrate oracle for this exact path
+   is cc_47 Part B. *)
+Module[{poly, vars, epsA, spec, lift, ls, ld, imA, specRe, fan, verts,
+        sd, divSecs, ibp, payload, lmp},
+  epsA = Symbol["epsCxA43"];
+  poly = 1 + x[1] x[2] + x[1]^2 + 10^6 x[2]^2;   (* extreme coeff on x2^2 (lift pivot) *)
+  vars = {x[1], x[2]};
+  spec = <|"Polynomials" -> {poly}, "MonomialExponents" -> {-1 + epsA, -1/2 - 3/2 I},
+    "PolynomialExponents" -> {-2}, "Variables" -> vars,
+    "KinematicSymbols" -> {}, "RegulatorSymbol" -> epsA|>;
+  lift = LiftCoefficients[spec,
+    {<|"PolyIndex" -> 1, "ExponentVector" -> {0, 2}, "k" -> 3|>}];  (* pivot on x2 *)
+  If[!AssociationQ[lift],
+    report["complex-A lift+div: lift built", False],
+    ls = lift["LiftedSpec"]; ld = lift["LiftData"];
+    imA = Im[ls["MonomialExponents"] /. epsA -> 0];          (* exact Im(A), aux 0 *)
+    specRe = MapAt[# - I*imA &, ls, {Key["MonomialExponents"]}];  (* realify A exactly *)
+    verts = PolytopeVertices[(Times @@ ls["Polynomials"])^(-1), ls["Variables"]];
+    fan = computeFanScaled[verts];
+    sd = Table[
+      ProcessSectorLifted[specRe, fan[[1]], fan[[2, s]], s, ld,
+        "Eps" -> epsA, "ImagMonoExps" -> imA, "Verbose" -> False],
+      {s, Length[fan[[2]]]}];
+    divSecs = Select[sd, AssociationQ[#] && TrueQ[#["IsDivergent"]] &];
+    report["complex-A lift+div: a divergent sector exists", Length[divSecs] > 0];
+    If[Length[divSecs] > 0,
+      lmp = divSecs[[1]]["LiftedMonoPhase"];
+      (* Structure guards FIRST (planR.md R3): FreeQ[_,_Real] is vacuously True for
+         Missing[...]["Num"] or {}, so a regression that drops the LiftedMonoPhase /
+         MonomialPhaseLog key or yields empty IBPTerms would otherwise pass green. *)
+      report["complex-A: LiftedMonoPhase is a populated Association",
+             AssociationQ[lmp] && KeyExistsQ[lmp, "Num"] && KeyExistsQ[lmp, "Const"]];
+      (* The headline novel term: Const_A = (Im(eaug)_p/m_p) logZ0 must be NONZERO
+         here so the logZ0 path is actually exercised (not the all-zero pivot). *)
+      report["complex-A: Const_A != 0 (logZ0 path exercised)",
+             AssociationQ[lmp] && !TrueQ[PossibleZeroQ[lmp["Const"]]]];
+      ibp = Quiet[IBPProcessSector[divSecs[[1]], specRe]];
+      report["complex-A lift+div: IBPProcessSector succeeds (Case A)", AssociationQ[ibp]];
+      If[AssociationQ[ibp],
+        report["complex-A: IBP produced >=1 term", Length[ibp["IBPTerms"]] > 0];
+        report["complex-A: every IBP term carries a MonomialPhaseLog Association",
+               Length[ibp["IBPTerms"]] > 0 &&
+               AllTrue[ibp["IBPTerms"], AssociationQ[#["MonomialPhaseLog"]] &]];
+        report["complex-A: boundary + every term carry Const_A != 0",
+               !TrueQ[PossibleZeroQ[ibp["BoundaryData"]["MonomialPhaseLog"]["Const"]]] &&
+               AllTrue[ibp["IBPTerms"],
+                       !TrueQ[PossibleZeroQ[#["MonomialPhaseLog"]["Const"]]] &]];
+        (* the codegen-bound monomial-phase payload: un-flattened LiftedMonoPhase
+           (Const_A + Num=Im(A).M), per-piece MonomialPhaseLog (boundary + terms),
+           Const AND Coeffs — all EXACT (Const_A = rational*Log[radical], rational
+           Num/Coeffs).  Including Const is the planR.md R3 coverage fix. *)
+        payload = {
+          lmp["Num"],
+          lmp["Const"],
+          ibp["BoundaryData"]["MonomialPhaseLog"]["Coeffs"],
+          ibp["BoundaryData"]["MonomialPhaseLog"]["Const"],
+          #["MonomialPhaseLog"]["Coeffs"] & /@ ibp["IBPTerms"],
+          #["MonomialPhaseLog"]["Const"] & /@ ibp["IBPTerms"]};
+        report["complex-A lift+div MonomialPhaseLog Num/Const/Coeffs FreeQ _Real",
+               FreeQ[payload, _Real]]
+      ]
+    ]
+  ]
+];
+
+(* planR.md R1 regression: an UNLIFTED SplitRealImag integral with a complex
+   monomial exponent (Im(A)) AND a divergent sector, on Method->"None" (which stays
+   in the EvaluateTropicalMC driver instead of routing to the phase-aware IBP path),
+   must REFUSE cleanly.  The inline subtraction path is not phase-aware (the
+   divergent branch of ProcessSector drops MonomialPhaseLog and ImagPolyExponents
+   is only reattached to convergent sectors), so a missing guard would emit a
+   phase-less (silently wrong) Laurent.  Assert BOTH $Failed and that the
+   TropicalEval::splitliftdiv message fired (Quiet+Check: Check sets `fired` iff the
+   listed message is generated; the only reachable splitliftdiv here is the new
+   unlifted guard, since this call is unlifted). *)
+Print["\n--- (R1) unlifted complex+divergent refuses (splitliftdiv) ---"];
+Module[{poly, vars, eps3, spec, verts, fan, sd, nDiv, fired, res, wd},
+  eps3 = Symbol["epsR1gate"];
+  poly = 1 + x[1] x[2] + x[2]^2; vars = {x[1], x[2]};
+  spec = <|"Polynomials" -> {poly}, "MonomialExponents" -> {-1 + eps3, -1/2 - 3/2 I},
+    "PolynomialExponents" -> {-2}, "Variables" -> vars,
+    "KinematicSymbols" -> {}, "RegulatorSymbol" -> eps3|>;
+  verts = PolytopeVertices[poly^(-1), vars];
+  fan = ComputeDecomposition[verts, "ShowProgress" -> False];
+  sd = Table[ProcessSector[spec, fan[[1]], fan[[2, s]], s], {s, Length[fan[[2]]]}];
+  nDiv = Count[sd, _?(AssociationQ[#] && TrueQ[#["IsDivergent"]] &)];
+  report["R1 fixture: unlifted spec has a divergent sector", nDiv > 0];
+  wd = FileNameJoin[{workDir, "r1_unlifted_cxdiv"}];
+  fired = False;
+  res = Quiet[
+    Check[
+      EvaluateTropicalMC[spec, fan, {{}}, "Method" -> "None",
+        "ComplexExponentMode" -> "SplitRealImag", "Integrator" -> "MC",
+        "NSamples" -> 1000, "RunChecks" -> False, "Verbose" -> False,
+        "WorkingDirectory" -> wd],
+      fired = True; $Failed,
+      TropicalEval::splitliftdiv],
+    TropicalEval::splitliftdiv];
+  report["R1: unlifted complex+divergent (Method None) returns $Failed", res === $Failed];
+  report["R1: TropicalEval::splitliftdiv message fired", TrueQ[fired]];
+];
+
 (* ---------------------------------------------------------------------------
    (3) FlattenSector eps-threading classification sanity.
    1+x1 with A=-1+eps, B=-2: the sector containing the x1->0 boundary is
