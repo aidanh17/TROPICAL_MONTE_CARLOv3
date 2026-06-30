@@ -275,8 +275,10 @@ Sampler options:
     "Batch" -> False        default; per-kinematic-point evaluation
     "Batch" -> True         VEGAS only; shares one low-discrepancy sample set
                             across a chunk of kinematic points (large speedup
-                            for large scans).  Convergent / lifted-convergent
-                            path only; divergent/IBP path falls back to per-kp.
+                            for large scans).  Supported on the convergent /
+                            lifted-convergent path AND the divergent/IBP path
+                            (planIBPCX.md §4: chunked-ncomp Vegas over the IBP
+                            function table, (1+n_ibp)-row-per-kp output preserved).
 
     "VegasEpsRel", "VegasEpsAbs", "VegasSeed", "VegasNStart", "VegasNIncrease",
     "VegasNBatch", "VegasMinEval"  -- Vegas tuning (default: Automatic).
@@ -625,11 +627,33 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
       logZ0 is the lifted bookkeeping (0 unlifted), Im(eaug) = Im(A_aug).RayMatrix.
         - Convergent (bubblepm analog): EvaluateTropicalMC SplitRealImag matches
           NIntegrate of the complex original (cc_47 (A), < 2%).
-        - Divergent, Case A (the imaginary phase decouples from the divergent
-          direction): IBP and pinned-eps Subtraction agree and match NIntegrate's
-          complex Laurent, including a genuinely complex pole (cc_47 (B)).
+        - Divergent, Case A / theta=0 (the imaginary phase decouples from the
+          divergent direction, so the 1/eps pole stays ON eps=0 with a genuinely
+          COMPLEX residue): IBP and pinned-eps Subtraction agree and match
+          NIntegrate's complex Laurent (cc_47 (B); cc_49 4-way IBP / Subtraction /
+          NIntegrate / exact Gamma-Laurent).
       Direct mode with complex-A lifting remains refused (liftcomplex) -- use
       SplitRealImag.
+
+      OFF-AXIS divergent directions (theta_k != 0) -- SUPPORTED on the IBP route
+      (planIBPCX.md, cc_47 (C), cc_50).  When the divergent direction carries a
+      nonzero imaginary exponent theta_k (Im(B).D from the dropped monomial factor,
+      Im(A).M from the bare monomial, OR a complex effective exponent in Direct
+      mode), the endpoint exponent is s_k = c_k eps + i theta_k.  The "1/eps pole"
+      then sits at eps = -i theta_k / c_k, OFF the real axis: the cone is FINITE
+      (pole = 0, value ~ 1/(i theta_k)) -- NOT a 1/eps divergence.  IBP is the
+      UNIQUE route that resolves it numerically: it RAISES the divergent exponent
+      before flattening, so the bulk theta-phase coefficient is theta/alpha0_raised
+      = O(theta), bounded.  The driver carries theta_k as "ImagPole" and branches
+      the Laurent assembly (theta=0 -> real pole, byte/numerically identical;
+      theta!=0 -> pole 0, finite (bndBase-S0)/(i theta_k)).  IBP also BATCHES over
+      kinematics: Integrator->"VEGAS", "Batch"->True now runs chunked-ncomp Vegas
+      over the IBP function table sharing samples across a kp-chunk, preserving the
+      (1+n_ibp)-row-per-kp output contract (cc_50 (B): batched IBP == per-kp IBP).
+      The inline-Subtraction and pinned-eps routes flatten the divergent slot by
+      its VANISHING exponent (phase coeff ~ theta/(c_k eps)) and oscillate too fast
+      to resolve -- they SHARE a blind spot, so neither is a valid off-axis oracle;
+      use NIntegrate of the complex original (planIBPCX.md §5.1 F2).
 
       NOT yet supported (refused with a clean $Failed, never a wrong number):
         - Case B: the divergent variable couples to the lifted domain face
@@ -641,15 +665,15 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
           Subtraction path (Method->"None"/"Subtraction"): refused
           (TropicalEval::splitliftdiv) -- that path's G0/G1 emitters are not
           phase-aware.  Use Method->Automatic/"IBP" or LaurentFromSubtraction.
-        - The complex analogue of Case B: the divergent direction carries a
-          nonzero imaginary exponent -- from the dropped monomial factor (Im(B).D)
-          OR from the bare monomial (Im(A).M, e.g. an imaginary monomial exponent
-          on the pole variable).  The real 1/eps pole then moves off eps=0 (a
-          complex shift), so the real-pole IBP assembly is refused
-          (TropicalEval::splitdivmono, cc_47 (C)).  At pinned eps the divergent-
-          slot phase coefficient ~ 1/eps makes the integrand oscillate too fast
-          for either route to resolve reliably, so this case is out of scope --
-          the clean $Failed is the deliverable.
+        - An imaginary exponent that itself scales like 1/eps (an eps-DEPENDENT
+          Im(B)/Im(A)): theta_k would then ~ 1/eps and reintroduce the fast
+          oscillation the off-axis IBP route relies on being O(theta).  Refused
+          (TropicalEval::splitdivmono).  The supported case is the standard real-eps
+          regulator with eps-free imaginary parts -- which is the physical case
+          (the bubble at imaginary mu).  (NOTE: a nonzero CONSTANT imaginary
+          exponent on the pole direction -- formerly "the complex analogue of Case
+          B", cc_47 (C) -- is NO LONGER refused; it is the off-axis case now
+          SUPPORTED on the IBP route, above.)
 
   L3. HasConstantTerm = False -> POSSIBLE INFINITE MC VARIANCE.
       When HasConstantTerm is False after delta-elimination, the lifted integrand
@@ -800,9 +824,13 @@ Highest-value checks:
   cc_46 complex-B x lifting x divergence: IBP vs Subtraction vs NIntegrate
         (complex Laurent), n=2,3 [planCXLIFTDIV.md]
   cc_47 complex-MONOMIAL-A x lifting x divergence (SplitRealImag): convergent +
-        Case-A divergent (genuinely complex pole); Case-B refused (splitdivmono)
-        [planAXpDIVv2.md]
+        Case-A divergent (genuinely complex pole) + OFF-AXIS (C) IBP (pole~0,
+        finite) vs NIntegrate [planAXpDIVv2.md, planIBPCX.md]
   cc_48 complex exponents x divergence, UNLIFTED: monomial-A (real B) and
         polynomial-B, Direct == SplitRealImag == exact Gamma-Laurent, IBP<->Sub
         agree.  Fills the F2 x F4b cell (F4b was convergent-only); isolates the
         SplitRealImag phase machinery from lifting (cc_46/cc_47 bundled it)
+  cc_49 F1 genuine complex pole (theta=0): 4-way agreement IBP / Subtraction /
+        NIntegrate / exact Gamma-Laurent, pole & finite [planIBPCX.md §5.1]
+  cc_50 F2 OFF-AXIS (theta!=0) divergent directions: IBP (pole~0, finite) vs exact
+        Gamma-Laurent & NIntegrate + reseed; batched IBP == per-kp IBP [planIBPCX.md]

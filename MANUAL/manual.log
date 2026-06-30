@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  29 JUN 2026 13:27
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  29 JUN 2026 20:13
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -818,6 +818,15 @@ dex"->j,"ExponentVector"->$\OML/lmm/m/it/10.95 $\T1/lmtt/m/n/10.95 ,"k"->k|>\T
  []
 
 
+
+
+Package fancyhdr Warning: \headheight is too small (12.0pt): 
+(fancyhdr)                Make it at least 13.59999pt, for example:
+(fancyhdr)                \setlength{\headheight}{13.59999pt}.
+(fancyhdr)                You might also make \topmargin smaller:
+(fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
+
+[14]
 Underfull \hbox (badness 10000) in paragraph at lines 442--443
 []\T1/lmr/m/n/10.95 Runs
  []
@@ -828,15 +837,6 @@ Overfull \hbox (6.65706pt too wide) in paragraph at lines 444--445
  []
 
 
-
-
-Package fancyhdr Warning: \headheight is too small (12.0pt): 
-(fancyhdr)                Make it at least 13.59999pt, for example:
-(fancyhdr)                \setlength{\headheight}{13.59999pt}.
-(fancyhdr)                You might also make \topmargin smaller:
-(fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
-
-[14]
 Underfull \hbox (badness 1360) in paragraph at lines 451--452
 []\T1/lmr/m/n/10.95 Constructs $\OML/lmm/m/it/10.95 G[]$\T1/lmr/m/n/10.95 , $\O
 ML/lmm/m/it/10.95 G[]$\T1/lmr/m/n/10.95 , Re-main-der.
@@ -898,11 +898,6 @@ Overfull \hbox (867.2863pt too wide) in paragraph at lines 553--572
  []
 
 
-Overfull \hbox (156.50438pt too wide) in paragraph at lines 580--591
- [] 
- []
-
-
 
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
@@ -912,6 +907,11 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [17]
+Overfull \hbox (156.50438pt too wide) in paragraph at lines 580--591
+ [] 
+ []
+
+
 Overfull \hbox (6.65706pt too wide) in paragraph at lines 597--598
 []
  []
@@ -1054,33 +1054,6 @@ Underfull \hbox (badness 10000) in paragraph at lines 750--751
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 751--752
-[]\T1/lmr/bx/n/10.95 [v3 new, planCXLIFT-
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 751--752
-\T1/lmr/bx/n/10.95 DIV.md/planAXpDIVv2.md]
- []
-
-
-Underfull \hbox (badness 1127) in paragraph at lines 751--752
-\T1/lmr/m/n/10.95 ex-po-nent in the di-ver-gent di-rec-tion
- []
-
-
-Underfull \hbox (badness 6775) in paragraph at lines 751--752
-\T1/lmr/m/n/10.95 both sources---the dropped mono-
- []
-
-
-Underfull \hbox (badness 1348) in paragraph at lines 751--752
-\T1/lmr/m/n/10.95 mial fac-tor $[][] []\OT1/lmr/m/n/10.95 (\OML/lmm/m/it/10.95 
-B[]\OT1/lmr/m/n/10.95 )\OML/lmm/m/it/10.95 D[]$ \T1/lmr/m/it/10.95 and \T1/lmr/
-m/n/10.95 the
- []
-
-
 Underfull \hbox (badness 1997) in paragraph at lines 752--753
 []\T1/lmr/m/n/10.95 Fan in lifted mode is not $\OT1/lmr/m/n/10.95 (\OML/lmm/m/i
 t/10.95 n[]\OT1/lmr/m/n/10.95 1)$\T1/lmr/m/n/10.95 -
@@ -1106,7 +1079,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [21]
-Overfull \vbox (84.01857pt too high) has occurred while \output is active []
+Overfull \vbox (97.61858pt too high) has occurred while \output is active []
 
 
 
@@ -1200,6 +1173,29 @@ plex ex-po-nents, full ma-trix: $\OMS/lmsy/m/n/10.95 f$\T1/lmr/m/n/10.95 IBP,
  []
 
 
+Underfull \hbox (badness 1424) in paragraph at lines 1028--1029
+[]\T1/lmr/m/n/10.95 Complex-\T1/lmr/m/it/10.95 monomial\T1/lmr/m/n/10.95 -$\OML
+/lmm/m/it/10.95 A$ $\OMS/lmsy/m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 lift $\OMS/lmsy/
+m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 di-ver-gence (\T1/lmtt/m/n/10.95 SplitRealImag
+\T1/lmr/m/n/10.95 ):
+ []
+
+
+Underfull \hbox (badness 5771) in paragraph at lines 1029--1030
+[]\T1/lmr/m/n/10.95 Complex ex-po-nents $\OMS/lmsy/m/n/10.95 ^^B$ \T1/lmr/m/n/1
+0.95 di-ver-gence, \T1/lmr/m/it/10.95 un-lifted\T1/lmr/m/n/10.95 : monomial-$\O
+ML/lmm/m/it/10.95 A$
+ []
+
+
+Underfull \hbox (badness 1122) in paragraph at lines 1029--1030
+\T1/lmr/m/n/10.95 and polynomial-$\OML/lmm/m/it/10.95 B$\T1/lmr/m/n/10.95 , \T1
+/lmtt/m/n/10.95 Direct$\OT1/lmr/m/n/10.95 =$\T1/lmtt/m/n/10.95 SplitRealImag$\O
+T1/lmr/m/n/10.95 =$\T1/lmr/m/n/10.95 exact $\OT1/lmr/m/n/10.95 ^^@$\T1/lmr/m/n/
+10.95 -Laurent,
+ []
+
+
 
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
@@ -1209,6 +1205,9 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [28]
+Overfull \vbox (108.57759pt too high) has occurred while \output is active []
+
+
 
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
@@ -1227,13 +1226,13 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [30]
-Underfull \hbox (badness 1331) in paragraph at lines 1072--1073
+Underfull \hbox (badness 1331) in paragraph at lines 1077--1078
 []\T1/lmr/m/n/10.95 C++17 re-quired (\T1/lmtt/m/n/10.95 -std=c++17\T1/lmr/m/n/1
 0.95 ). OpenMP rec-om-mended
  []
 
 
-Underfull \hbox (badness 2538) in paragraph at lines 1074--1075
+Underfull \hbox (badness 2538) in paragraph at lines 1079--1080
 []\T1/lmr/m/n/10.95 ([][]$\T1/lmtt/m/n/10.95 https : / / feynarts . de / cuba/$
 [][]\T1/lmr/m/n/10.95 ) Re-quired only for \T1/lmtt/m/n/10.95 "Integrator" ->
  []
@@ -1276,7 +1275,7 @@ Here is how much of TeX's memory you used:
  44665 multiletter control sequences out of 15000+600000
  652900 words of font info for 102 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 75i,13n,79p,3009b,8733s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,13n,79p,3124b,8733s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/local/texlive/2025/texmf-dist/fonts/type1/public/lm/lmbx10.pfb></usr/lo
 cal/texlive/2025/texmf-dist/fonts/type1/public/lm/lmbx12.pfb></usr/local/texliv
 e/2025/texmf-dist/fonts/type1/public/lm/lmbxi10.pfb></usr/local/texlive/2025/te
@@ -1297,10 +1296,10 @@ st/fonts/type1/public/lm/lmtk10.pfb></usr/local/texlive/2025/texmf-dist/fonts/t
 ype1/public/lm/lmtt10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publi
 c/amsfonts/symbols/msam10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/p
 ublic/amsfonts/symbols/msbm10.pfb>
-Output written on manual.pdf (32 pages, 541482 bytes).
+Output written on manual.pdf (32 pages, 546178 bytes).
 PDF statistics:
- 959 PDF objects out of 1000 (max. 8388607)
- 861 compressed objects within 9 object streams
+ 960 PDF objects out of 1000 (max. 8388607)
+ 862 compressed objects within 9 object streams
  347 named destinations out of 1000 (max. 500000)
  486 words of extra memory for PDF output out of 10000 (max. 10000000)
 

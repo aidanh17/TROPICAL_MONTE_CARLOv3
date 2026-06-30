@@ -120,8 +120,10 @@ GenerateCppMonteCarloIBP::usage =
   "GenerateCppMonteCarloIBP[convergentSectors, ibpSectors, integrandSpec, \
 outputFile] generates C++ Monte Carlo code with IBP divergence handling. \
 Outputs per-function MC results for IBP sectors. Supports \"Integrator\"-> \
-\"Vegas\" (per-kp CUBA Vegas; same output layout); \"Batch\" falls back to \
-per-kp Vegas on the IBP path. Default output is byte-identical to before.";
+\"Vegas\" (per-kp CUBA Vegas; same output layout) and \"Batch\"->True \
+(chunked-ncomp Vegas sharing samples across a kp-chunk for each IBP function, \
+same (1+n_ibp)-row-per-kp layout; planIBPCX.md §4). Default output is \
+byte-identical to before.";
 
 ValidateIBP::usage =
   "ValidateIBP[ibpSectorData, sectorData, integrandSpec, testKinematics, \
@@ -211,7 +213,7 @@ TropicalEval::liftdivergent = "ProcessSectorLifted: cone `1` — atilde `2` has 
 TropicalEval::liftfandim = "EvaluateTropicalMC with LiftData: the fan dimension is `1` but n+1 = `2` is required.  Supply the (n+1)-dimensional lifted fan.";
 TropicalEval::liftdegenerate = "EvaluateTropicalMCLifted: the lifted Newton polytope is lower-dimensional; automatic fan construction is not possible — supply an explicit complete simplicial fan via the \"FanData\" option.";
 TropicalEval::liftdivdomain = "ProcessSectorLifted: cone `1` — the divergent variable couples to the lifted domain constraint (ic_k != 0) for every admissible pivot.  The 1/eps pole and the domain face interact (Case B, planAXpDIV.md §3); a log-space remap is required (future work).  Aborting ($Failed).";
-TropicalEval::splitdivmono = "IBPProcessSector: cone `1` — the divergent direction carries a nonzero imaginary exponent (Sum_j Im(B_j) D_{j,k} from the dropped tropical monomial factor PLUS Im(A).M from the bare monomial = `2`), so the 1/eps pole acquires an imaginary shift (the pole moves off eps=0) that the real-pole IBP assembly does not resolve.  This is the complex Case-B coupling (planAXpDIV.md §3 / planCXLIFTDIV.md §9 / planAXpDIVv2.md §4.5).  Aborting ($Failed) rather than emitting a wrong pole.";
+TropicalEval::splitdivmono = "IBPProcessSector: cone `1` — the divergent direction's imaginary exponent theta_k = `2` is eps-DEPENDENT (it scales with the regulator).  A constant theta_k is fine — it is the off-axis case the IBP route now supports (s_k = c_k eps + i theta_k is regular at eps=0; planIBPCX.md §1/§3).  But an eps-dependent theta_k ~ 1/eps reintroduces the fast oscillation the bounded IBP integrand relies on being O(theta), so it cannot be resolved.  The supported case is the standard real-eps regulator with eps-free Im(B)/Im(A) (planIBPCX.md §8).  Aborting ($Failed) rather than emitting a wrong value.";
 TropicalEval::splitliftdiv = "EvaluateTropicalMC: SplitRealImag x lifting x divergence is supported only on the IBP route (Method -> Automatic / \"IBP\") and the pinned-eps Subtraction route (LaurentFromSubtraction); the symbolic-eps inline Subtraction path (Method -> \"None\"/\"Subtraction\") does not re-derive the per-piece oscillatory phase (planCXLIFTDIV.md C1).  Use Method -> Automatic (default) or LaurentFromSubtraction for lifted+divergent complex-exponent integrals.";
 
 (* ---- High-D VEGAS sizing guard (lift_error_log L1, plan.md §6.5) ---- *)
@@ -2968,8 +2970,9 @@ Module[
    integrands into one line per kp; the IBP path writes the convergent sum on
    line 0 and each IBP function on its own line.  The per-branch C++ bodies are
    the Phase-1 emitters' bodies verbatim, so the emitted bytes are unchanged
-   (golden-master regression, cross-check #25).  Batch is ignored on the IBP
-   path (per-kp Vegas fallback, plan.md §5.1).
+   (golden-master regression, cross-check #25).  On the IBP path batch selects the
+   chunked-ncomp Vegas over the IBP function table (planIBPCX.md §4); without batch
+   it stays the per-kp Vegas main.
    -------------------------------------------------------------------------- *)
 Options[emitMain] = Join[
   {"NSamples" -> 1000000, "SeedBase" -> 42},
@@ -3456,7 +3459,129 @@ Module[{code, nSamples, seedBase, epsrel, epsabs, seed, maxComp, isIBP,
   code = code <> "}\n";
     code
     ,
-    (* IBP path: batched Vegas falls back to per-kp (plan.md §5.1) *)
+    (* IBP path, batched Vegas (planIBPCX.md §4): one Vegas call per (IBP
+       function, kp-chunk) sharing samples across the chunk, exactly like the
+       convergent batched path (cubaBatch / the gb_ globals), but iterating the
+       IBP FUNCTION table and writing the (1 + n_ibp)-row-per-kp layout
+       (convergent sectors summed into row 0, each IBP function on its own row).
+       The output contract is identical to the per-kp IBP main, so the driver
+       combine is unchanged. *)
+    integrator === "VEGAS" && batch && isIBP,
+  code = "// TROPICAL_REQUIRES_CUBA  (CompileCpp greps for this sentinel)\n";
+  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
+  code = code <> "extern \"C\" {\n";
+  code = code <> "#include <cuba.h>\n";
+  code = code <> "}\n";
+  code = code <> "#include <algorithm>\n";
+  code = code <> "static const double* gb_par = nullptr;\n";
+  code = code <> "static int gb_sector = 0, gb_dim = 0, gb_kp0 = 0, gb_chunk = 0;\n";
+  code = code <> "static int cubaBatch(const int* ndim, const cubareal xx[], const int* ncomp,\n";
+  code = code <> "                     cubareal ff[], void* userdata) {\n";
+  code = code <> "    (void)ndim; (void)ncomp; (void)userdata;\n";
+  code = code <> "    double y[MAX_DIM];\n";
+  code = code <> "    for (int i = 0; i < gb_dim; ++i) y[i] = (double)xx[i];\n";
+  code = code <> "    for (int c = 0; c < gb_chunk; ++c) {\n";
+  code = code <> "        const double* pp = (N_PARAMS > 0) ? &gb_par[(size_t)(gb_kp0 + c) * N_PARAMS] : nullptr;\n";
+  code = code <> "        cx v = integrand_table[gb_sector](y, pp);\n";
+  code = code <> "        ff[2*c] = v.real(); ff[2*c + 1] = v.imag();\n";
+  code = code <> "    }\n";
+  code = code <> "    return 0;\n";
+  code = code <> "}\n";
+  code = code <> "#endif\n\n";
+
+  code = code <> "int main(int argc, char* argv[]) {\n";
+  code = code <> "    if (argc < 3) {\n";
+  code = code <> "        std::cerr << \"Usage: \" << argv[0] << \" <input_file> <output_file> [maxeval] [n_threads]\" << std::endl;\n";
+  code = code <> "        return 1;\n";
+  code = code <> "    }\n\n";
+  code = code <> "    std::string input_file = argv[1];\n";
+  code = code <> "    std::string output_file = argv[2];\n";
+  code = code <> "    long long maxeval = (argc > 3) ? std::atoll(argv[3]) : " <> ToString[nSamples] <> "LL;\n\n";
+  code = code <> "    std::ifstream fin(input_file);\n";
+  code = code <> "    if (!fin) { std::cerr << \"Cannot open \" << input_file << std::endl; return 1; }\n";
+  code = code <> "    std::vector<std::vector<double>> kinematic_data;\n";
+  code = code <> "    if (N_PARAMS == 0) {\n";
+  code = code <> "        int count = 1; fin >> count; if (count < 1) count = 1;\n";
+  code = code <> "        for (int i = 0; i < count; i++) kinematic_data.push_back({});\n";
+  code = code <> "    } else {\n";
+  code = code <> "        double val; std::vector<double> row;\n";
+  code = code <> "        while (fin >> val) { row.push_back(val);\n";
+  code = code <> "            if ((int)row.size() == N_PARAMS) { kinematic_data.push_back(row); row.clear(); }}\n";
+  code = code <> "    }\n";
+  code = code <> "    fin.close();\n";
+  code = code <> "    int n_kp = (int)kinematic_data.size();\n";
+  code = code <> "    std::cerr << \"Read \" << n_kp << \" kinematic points (Vegas batch IBP)\" << std::endl;\n\n";
+  code = code <> "    int n_ibp = N_INTEGRANDS - N_CONV;\n";
+  code = code <> "    std::vector<std::array<double, 4>> results((size_t)(1 + n_ibp) * n_kp);\n\n";
+
+  code = code <> "#ifdef TROPICAL_USE_CUBA\n";
+  code = code <> "    { const int zero = 0; cubacores(&zero, &zero); }\n";
+  code = code <> "    const double epsrel = " <> epsrel <> ", epsabs = " <> epsabs <> ";\n";
+  code = code <> "    const int    seed    = " <> seed <> ";\n";
+  code = code <> "    const int    maxComp = " <> maxComp <> ";   // ncomp ceiling -- never exceed (Vegas segfaults above it)\n";
+  code = code <> "    const int    kpPerChunk = (maxComp / 2 < 1) ? 1 : maxComp / 2;  // 2 comps (re,im) per kp\n";
+  code = code <> "    std::vector<double> flat_par((size_t)n_kp * (N_PARAMS > 0 ? N_PARAMS : 1), 0.0);\n";
+  code = code <> "    for (int kp = 0; kp < n_kp; ++kp)\n";
+  code = code <> "        for (int p = 0; p < N_PARAMS; ++p) flat_par[(size_t)kp * N_PARAMS + p] = kinematic_data[kp][p];\n";
+  code = code <> "    gb_par = flat_par.data();\n";
+  code = code <> "    // (1 + n_ibp) output rows per kp: row 0 = convergent sum, rows 1..n_ibp = IBP funcs.\n";
+  code = code <> "    const size_t nrows = (size_t)(1 + n_ibp) * n_kp;\n";
+  code = code <> "    std::vector<double> ore(nrows, 0), oim(nrows, 0), ovre(nrows, 0), ovim(nrows, 0);\n";
+  code = code <> "    for (int s = 0; s < N_INTEGRANDS; ++s) {\n";
+  code = code <> "        gb_sector = s; gb_dim = integrand_dim[s];\n";
+  code = code <> "        // convergent sectors (s < N_CONV) accumulate into row 0; each IBP\n";
+  code = code <> "        // function (s >= N_CONV) writes its own row (s - N_CONV + 1).\n";
+  code = code <> "        int rowInKp = (s < N_CONV) ? 0 : (s - N_CONV + 1);\n";
+  code = code <> "        if (gb_dim == 0) {\n";
+  code = code <> "            // 0-dim integrand (e.g. IBP boundary of a 1-var sector): a constant\n";
+  code = code <> "            // per kp -- evaluate directly, no Vegas.\n";
+  code = code <> "            for (int kp = 0; kp < n_kp; ++kp) {\n";
+  code = code <> "                const double* pp = (N_PARAMS > 0) ? &flat_par[(size_t)kp * N_PARAMS] : nullptr;\n";
+  code = code <> "                double y0[1] = {0.0}; cx v = integrand_table[s](y0, pp);\n";
+  code = code <> "                size_t r = (size_t)kp * (1 + n_ibp) + rowInKp;\n";
+  code = code <> "                ore[r] += v.real(); oim[r] += v.imag();\n";
+  code = code <> "            }\n";
+  code = code <> "            continue;\n";
+  code = code <> "        }\n";
+  code = code <> "        for (int k0 = 0; k0 < n_kp; k0 += kpPerChunk) {\n";
+  code = code <> "            int cs = std::min(kpPerChunk, n_kp - k0);\n";
+  code = code <> "            gb_kp0 = k0; gb_chunk = cs;\n";
+  code = code <> "            int ncomp = 2 * cs;\n";
+  code = code <> "            std::vector<cubareal> integ(ncomp), err(ncomp), prob(ncomp);\n";
+  code = code <> "            int neval = 0, fail = 0;\n";
+  code = code <> "            Vegas(gb_dim, ncomp, cubaBatch, nullptr, 1, epsrel, epsabs, 0, seed,\n";
+  code = code <> "                  0, (int)maxeval, " <> vegSizing <> ", 0, nullptr, nullptr,\n";
+  code = code <> "                  &neval, &fail, integ.data(), err.data(), prob.data());\n";
+  code = code <> "            for (int c = 0; c < cs; ++c) {\n";
+  code = code <> "                size_t r = (size_t)(k0 + c) * (1 + n_ibp) + rowInKp;\n";
+  code = code <> "                ore[r]  += integ[2*c];        oim[r]  += integ[2*c + 1];\n";
+  code = code <> "                ovre[r] += err[2*c]*err[2*c]; ovim[r] += err[2*c + 1]*err[2*c + 1];\n";
+  code = code <> "            }\n";
+  code = code <> "        }\n";
+  code = code <> "    }\n";
+  code = code <> "    for (size_t r = 0; r < nrows; ++r)\n";
+  code = code <> "        results[r] = {ore[r], oim[r], std::sqrt(ovre[r]), std::sqrt(ovim[r])};\n";
+  code = code <> "#else\n";
+  code = code <> "    (void)maxeval;\n";
+  code = code <> "    std::cerr << \"ERROR: built without CUBA. Rebuild with -DTROPICAL_USE_CUBA \"\n";
+  code = code <> "                 \"(install CUBA), or use Integrator -> \\\"MonteCarlo\\\".\" << std::endl;\n";
+  code = code <> "    return 2;\n";
+  code = code <> "#endif\n\n";
+
+  code = code <> "    std::ofstream fout(output_file);\n";
+  code = code <> "    if (!fout) { std::cerr << \"Cannot open \" << output_file << std::endl; return 1; }\n";
+  code = code <> "    fout.precision(17);\n";
+  code = code <> "    for (int i = 0; i < (int)results.size(); i++) {\n";
+  code = code <> "        fout << results[i][0] << \" \" << results[i][1] << \" \"\n";
+  code = code <> "             << results[i][2] << \" \" << results[i][3] << \"\\n\";\n";
+  code = code <> "    }\n";
+  code = code <> "    fout.close();\n";
+  code = code <> "    std::cerr << \"Done. Processed \" << n_kp << \" kinematic points (batched IBP).\" << std::endl;\n";
+  code = code <> "    return 0;\n}\n";
+    code
+    ,
+    (* IBP path, per-kp Vegas (one Vegas run per kinematic point; the batched
+       variant above shares the grid across a kp-chunk). *)
     integrator === "VEGAS" && isIBP,
   code = "// TROPICAL_REQUIRES_CUBA  (CompileCpp greps for this sentinel)\n";
   code = code <> "#ifdef TROPICAL_USE_CUBA\n";
@@ -4804,6 +4929,40 @@ Module[
 ];
 
 (* --------------------------------------------------------------------------
+   ibpImagPole  (planIBPCX.md §3.1)
+   The imaginary part theta_k of the divergent direction y_k's effective
+   endpoint exponent  s_k = c_k eps + i theta_k.  The 1/eps pole is governed
+   by s_k, not by c_k alone: theta_k = 0 gives a genuine 1/(c_k eps) pole;
+   theta_k != 0 gives 1/(c_k eps + i theta_k), which is REGULAR at eps=0 (no
+   pole, finite 1/(i theta_k)) — see planIBPCX.md §1.2.
+
+   Two representations contribute, and they are mutually exclusive:
+     - Direct / unlifted:  Im(A) + Sum_j Im(B_j) D_{j,k} is folded into the
+       complex effective exponent NewExponents[[k]]  ->  Im[a0[[k]]].
+     - Lifted SplitRealImag:  NewExponents is realified (Re only); the imaginary
+       part rides separately via LiftedMonoFactor (Sum_j Im(B_j) D_{j,k}) and
+       LiftedMonoPhase (Im(A) numerator on slot k).
+   For every real / Case-A sector theta_k is provably zero (PossibleZeroQ) ->
+   the real-pole Laurent branch is taken -> byte/numerically identical (#25).
+   Built from exact Im[...] data (no N[...]) so exactness (#1) is preserved.
+   -------------------------------------------------------------------------- *)
+
+ibpImagPole[sectorData_Association, k_Integer, eps_] :=
+Module[{a0k, lmf, lmp, imB, theta},
+  a0k   = If[eps === None, sectorData["NewExponents"][[k]],
+                           sectorData["NewExponents"][[k]] /. eps -> 0];
+  theta = Im[a0k];                                  (* Direct / unlifted part *)
+  lmf = Lookup[sectorData, "LiftedMonoFactor", None];
+  lmp = Lookup[sectorData, "LiftedMonoPhase",  None];
+  imB = Lookup[sectorData, "ImagPolyExponents", None];
+  (* Lifted SplitRealImag part (a0k is real there, so the two never overlap). *)
+  If[ListQ[imB] && lmf =!= None,
+    theta += Sum[imB[[j]] * lmf["DExp"][[j, k]], {j, Length[lmf["DExp"]]}]];
+  If[lmp =!= None, theta += lmp["Num"][[k]]];
+  theta
+];
+
+(* --------------------------------------------------------------------------
    IBPReduceSector
    Main IBP reduction function.  Iteratively applies IBP to resolve all
    divergent variables in a sector.
@@ -4863,7 +5022,12 @@ Module[
       ak = aVals[[k]];
       ck = D[ak, eps] /. eps -> 0;
 
-      If[TrueQ[ck == 0] || (NumericQ[ck] && ck == 0),
+      (* c_k = 0 is a genuine higher-order / unregulated log pole ONLY when the
+         direction is also on-axis (theta_k = 0).  When theta_k != 0 the y_k=0
+         endpoint is regulated by the oscillation (prefactor 1/(i theta_k), no
+         eps needed) and IBP resolves it — do not abort (planIBPCX.md §3.2). *)
+      If[(TrueQ[ck == 0] || (NumericQ[ck] && ck == 0)) &&
+         TrueQ[PossibleZeroQ[ibpImagPole[sectorData, k, eps]]],
         Message[TropicalEval::badck, sectorData["ConeIndex"], k];
         Return[$Failed]
       ];
@@ -4962,7 +5126,7 @@ Module[
    divVars, ck, rk, aVals, polyExps,
    a0, a1, B0, B1, ak, ak2,
    boundaryData, ibpTermsProcessed, lmf, lmp,
-   k},
+   k, imagPole},
 
   eps = integrandSpec["RegulatorSymbol"];
   n   = sectorData["Dimension"];
@@ -5014,31 +5178,29 @@ Module[
 
   k = divVars[[1]];
 
-  (* SplitRealImag x divergence sanity (planCXLIFTDIV.md §9 / planAXpDIVv2.md §4.5):
-     the per-piece phase and the brought-down complex IBP coefficient assume the
-     divergent direction carries NO imaginary exponent — else the real 1/eps pole
-     acquires an imaginary shift (c_k eps + i C_k) and a self-consistent (non-real-
-     pole) assembly is required.  Two sources contribute to that imaginary shift in
-     slot k: the dropped tropical MONOMIAL FACTOR (Im(B).D, planCXLIFTDIV) and the
-     bare MONOMIAL phase (Im(A); planAXpDIVv2 — the Im(eaug) numerator Num_k).  For
-     the supported (Case A) scope both vanish (the real pole is preserved); refuse
-     cleanly otherwise.  Absent on real / unlifted sectors (lmf===None AND
-     lmp===None) -> no-op (#25).
-     planR.md R4: fire whenever EITHER phase source is present — do not nest the
-     lmp (Im(A)) check inside lmf =!= None.  Today lmf accompanies lmp on every
-     divergent lifted sector (liftedMonoFactorNum is computed unconditionally), but
-     a future sector carrying LiftedMonoPhase without LiftedMonoFactor would
-     otherwise skip this Case-B refusal and emit a silently wrong complex pole. *)
-  If[lmf =!= None || lmp =!= None,
-    Module[{imB = Lookup[sectorData, "ImagPolyExponents", None], ckImag = 0},
-      If[ListQ[imB] && lmf =!= None,
-        ckImag += Sum[imB[[j]] * lmf["DExp"][[j, k]], {j, Length[lmf["DExp"]]}]];
-      If[lmp =!= None, ckImag += lmp["Num"][[k]]];
-      If[!TrueQ[PossibleZeroQ[ckImag]],
-        Message[TropicalEval::splitdivmono, sectorData["ConeIndex"], ckImag];
-        Return[$Failed]
-      ]
-    ]
+  (* Imaginary exponent of the divergent direction (planIBPCX.md §3.1).  When the
+     divergent slot k carries a nonzero imaginary part theta_k the effective
+     endpoint exponent is s_k = c_k eps + i theta_k: REGULAR at eps=0 (no 1/eps
+     pole, finite 1/(i theta_k)) — see planIBPCX.md §1.2.  This was previously a
+     refusal (TropicalEval::splitdivmono, "complex Case B"), conflating the harmless
+     complex-pole-LOCATION shift with the genuinely-hard geometric Case B
+     (liftdivdomain).  It is now COMPUTED and carried as "ImagPole"; the driver's
+     Laurent assembly branches on it (theta_k=0 -> real pole, unchanged; theta_k!=0
+     -> finite, off-axis).  Sources: the dropped tropical MONOMIAL FACTOR (Im(B).D),
+     the bare MONOMIAL phase (Im(A)), or — in Direct/unlifted mode — the complex
+     effective exponent itself (Im[a0[[k]]]); ibpImagPole unifies all three.
+     theta_k = 0 on every real / Case-A sector -> PossibleZeroQ True -> byte-
+     identical real path (#25).  The phases that make the off-axis bulk integrand
+     numerically bounded are already emitted (per-piece termMonoFactorLog /
+     MonomialPhaseLog divide by the RAISED alpha0; planIBPCX.md §2). *)
+  imagPole = ibpImagPole[sectorData, k, eps];
+  (* Out-of-scope guard (planIBPCX.md §8): an imaginary exponent that itself scales
+     like 1/eps (eps-dependent Im) reintroduces fast oscillation that the bounded
+     IBP integrand can no longer resolve.  The supported case has eps-free Im(B)/
+     Im(A); refuse cleanly otherwise. *)
+  If[!FreeQ[imagPole, eps],
+    Message[TropicalEval::splitdivmono, sectorData["ConeIndex"], imagPole];
+    Return[$Failed]
   ];
 
   (* Epsilon expansion of the original effective exponents *)
@@ -5261,6 +5423,13 @@ Module[
        SplitRealImag oscillatory phase in the IBP boundary/term codegen.  None for
        real / unlifted sectors -> no phase emitted -> byte-identical (#25). *)
     "ImagPolyExponents"      -> Lookup[sectorData, "ImagPolyExponents", None],
+    (* theta_k = Im part of the divergent endpoint exponent (planIBPCX.md §3.1).
+       0 (exact) for real / Case-A sectors -> driver takes the real-pole branch and
+       reproduces the current numbers bit-for-bit.  Nonzero (off-axis) -> the cone
+       is finite (no 1/eps pole); the driver assembles 1/(i theta_k). *)
+    "ImagPole"               -> imagPole,
+    (* 1/ck is the real-pole residue; authoritative only when ImagPole == 0
+       (planIBPCX.md §3.1).  Kept for diagnostics / back-compat. *)
     "AnalyticPole"           -> 1/ck
   |>
 ];
@@ -5632,12 +5801,10 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
            integrandSpec, "MaxDim" -> maxDim];
 
   integrator = normalizeIntegrator[integrator];
-  If[integrator === "VEGAS" && batch,
-    Print["NOTE: batched-ncomp VEGAS is not implemented for the IBP path ",
-          "(VEGAS plan T8, deferred); using per-kp VEGAS."]];
 
-  (* emitMain routes IBP result-assembly off defs["IsIBP"]; batch is ignored on
-     the IBP path (per-kp Vegas fallback, plan.md §5.1). *)
+  (* emitMain routes IBP result-assembly off defs["IsIBP"]; batch now selects the
+     chunked-ncomp Vegas over the IBP function table (planIBPCX.md §4) while
+     preserving the (1 + n_ibp)-row-per-kp output contract. *)
   mainCode = emitMain[defs, integrator, batch,
     "NSamples" -> nSamples, "SeedBase" -> seedBase,
     "VegasEpsRel" -> OptionValue["VegasEpsRel"],
@@ -5663,7 +5830,7 @@ Module[{defs, mainCode, code, integrator, batch, maxDim, nSamples, seedBase},
   Export[outputFile, code, "Text"];
 
   Print["Generated IBP C++ Monte Carlo code: ", outputFile,
-    If[integrator === "VEGAS", "  (VEGAS, per-kp)", ""]];
+    If[integrator === "VEGAS", If[batch, "  (VEGAS, batched)", "  (VEGAS, per-kp)"], ""]];
   Print["  ", defs["NConvergent"], " convergent sectors"];
   Print["  ", defs["NIBPFuncs"], " IBP integrands (",
         Length[ibpSectors], " sectors)"];
@@ -5702,7 +5869,7 @@ Options[evaluateTropicalIBPDriver] = {
   "Verbose"          -> True,
   (* sampler selection (default = the zero-dependency plain Monte Carlo) *)
   "Integrator"       -> "MC",    (* "MC" | "VEGAS" (aliases "MonteCarlo"/"Vegas") *)
-  "Batch"            -> False,         (* IBP batch deferred -> per-kp VEGAS *)
+  "Batch"            -> False,   (* True + VEGAS: chunked-ncomp batched IBP (planIBPCX.md §4) *)
   (* LiftData (planAXpDIV.md §4.4, Barrier C): when present, sectors are
      processed via ProcessSectorLifted (eps-aware), so lifted+divergent
      integrals take the IBP route exactly like unlifted divergent ones. *)
@@ -6012,7 +6179,7 @@ Module[
       Do[
         Module[{sMap, bndBaseFid, bndLogFid, termFids,
                 bndBase, bndLog, S0, S1, ckS, rkS,
-                poleCont, finiteCont},
+                poleCont, finiteCont, imagPoleSym, theta0},
           sMap     = ibpFuncMap[[s]];
           bndBaseFid = sMap["BndBaseFuncId"];
           bndLogFid  = sMap["BndLogFuncId"];
@@ -6020,6 +6187,17 @@ Module[
 
           ckS = ibpProcessedSectors[[s]]["ck"] /. kinRules;
           rkS = ibpProcessedSectors[[s]]["rk"] /. kinRules;
+
+          (* theta_k: the imaginary shift of the divergent endpoint exponent
+             (planIBPCX.md §3.3/§3.4).  Decide the branch from the SYMBOLIC value
+             first (the exact, decomposition-free test): if provably zero this is a
+             real 1/eps pole and the real-pole formulas below run unchanged (byte/
+             numerically identical, #25).  Mixed-grid guard: a symbolically-nonzero
+             theta that vanishes at THIS kp (e.g. mu crossing the real axis) would
+             divide by zero, so also fall back to the real formula when theta0
+             evaluates to 0 numerically. *)
+          imagPoleSym = Lookup[ibpProcessedSectors[[s]], "ImagPole", 0];
+          theta0      = imagPoleSym /. kinRules;
 
           (* Read MC results for boundary functions *)
           bndBase = mcCx[bndBaseFid];
@@ -6040,18 +6218,28 @@ Module[
             {t, Length[termFids]}
           ];
 
-          (* Pole contribution: (B^{(0)} - S_0) / c_k *)
-          poleCont = (bndBase - S0) / ckS;
-
-          (* Finite contribution:
-             [(B^{(1)} - S_1) - r_k (B^{(0)} - S_0)] / c_k *)
-          finiteCont = ((bndLog - S1) - rkS * (bndBase - S0)) / ckS;
-
-          (* Lifted PrefactorBase eps-dependence (planAXpDIV.md §4.1): the codegen
-             used PrefactorBase(0), so add the missing (P'/P)(0)*pole finite term.
-             DLogPrefactor is 0 for unlifted sectors -> unlifted result unchanged. *)
-          finiteCont = finiteCont +
-            (ibpProcessedSectors[[s]]["DLogPrefactor"] /. kinRules) * poleCont;
+          If[TrueQ[PossibleZeroQ[imagPoleSym]] ||
+             (NumericQ[theta0] && TrueQ[PossibleZeroQ[theta0]]),
+            (* ---- Real 1/eps pole (theta_k = 0), prefactor 1/(c_k eps) ---- *)
+            (* Pole contribution: (B^{(0)} - S_0) / c_k *)
+            poleCont = (bndBase - S0) / ckS;
+            (* Finite contribution:
+               [(B^{(1)} - S_1) - r_k (B^{(0)} - S_0)] / c_k *)
+            finiteCont = ((bndLog - S1) - rkS * (bndBase - S0)) / ckS;
+            (* Lifted PrefactorBase eps-dependence (planAXpDIV.md §4.1): the codegen
+               used PrefactorBase(0), so add the missing (P'/P)(0)*pole finite term.
+               DLogPrefactor is 0 for unlifted sectors -> unlifted result unchanged. *)
+            finiteCont = finiteCont +
+              (ibpProcessedSectors[[s]]["DLogPrefactor"] /. kinRules) * poleCont;
+          ,
+            (* ---- Off-axis (theta_k != 0): prefactor 1/(c_k eps + i theta_k),
+               REGULAR at eps=0 -> no pole, finite 1/(i theta_k).  The eps^1 pieces
+               (bndLog/S1) and the DLogPrefactor term are O(eps) and drop
+               (planIBPCX.md §1.2/§3.3).  bndBase/S0 already carry pfBase(0) and the
+               bounded theta-phases, so nothing upstream changes. ---- *)
+            poleCont   = 0;
+            finiteCont = (bndBase - S0) / (I * theta0);
+          ];
 
           ibpContribPole   += poleCont;
           ibpContribFinite += finiteCont;

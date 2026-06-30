@@ -21,12 +21,14 @@
          phase decouples from the divergent direction), genuinely COMPLEX pole:
          IBP route vs pinned-eps Subtraction route vs NIntegrate complex Laurent.
          Pole agreement < 0.05; recon within ~3% of NIntegrate.
-     (C) DIVERGENT complex-A, Case B (imaginary phase couples to the divergent
-         slot — imaginary part on the pole variable shifts the pole off eps=0):
-         the IBP route REFUSES cleanly (splitdivmono -> $Failed), never a wrong
-         number.  (At pinned eps the divergent-slot phase coefficient ~1/eps makes
-         the integrand oscillate too fast for either route to resolve reliably, so
-         Case B is out of scope — the refusal is the deliverable.)
+     (C) DIVERGENT complex-A, OFF-AXIS (imaginary phase couples to the divergent
+         slot — imaginary part on the pole variable shifts the endpoint exponent to
+         s_k = c_k eps + i theta_k, theta_k != 0): the "pole" sits off eps=0, the
+         cone is FINITE (pole = 0, value ~ 1/(i theta_k)).  IBP is the UNIQUE route
+         that resolves it (planIBPCX.md §1.2: it raises the divergent exponent
+         before flattening -> bounded bulk theta-phase).  IBP (pole~0, finite) vs
+         NIntegrate of the complex original.  (Subtraction / pinned-eps share the
+         vanishing-exponent blind spot and are NOT valid oracles here — §5.1 F2.)
 
    Independent oracles per numeric PASS: NIntegrate of the complex original AND a
    second engine route (Subtraction vs IBP).  (planAXpDIVv2.md §8.5.)
@@ -179,19 +181,27 @@ Module[{epsD, esStar, dim, polys, pe, Avals, spec, lift, ls, ld, fan,
 ];
 
 (* ============================================================================
-   PART C — divergent complex-A, Case B: the imaginary phase couples to the
-   divergent direction (imaginary part on the POLE variable), shifting the pole
-   off eps=0.  The real-pole IBP assembly cannot resolve this, so the engine
-   REFUSES cleanly (splitdivmono -> $Failed) — the "known limitation produces a
-   clean $Failed, never a wrong number" contract (planAXpDIVv2.md §9).
+   PART C — divergent complex-A, OFF-AXIS (planIBPCX.md §1/§3): the imaginary
+   phase couples to the divergent direction (imaginary part 3/2 ON the pole
+   variable x1), so the divergent endpoint exponent is s_k = c_k eps + i theta_k
+   with theta_k != 0.  The "1/eps pole" is then REGULAR at eps=0 (it sits at
+   eps = -i theta_k/c_k, off the real axis): the cone is FINITE, pole = 0, value
+   ~ 1/(i theta_k).  This was formerly refused as "complex Case B"
+   (splitdivmono -> $Failed); planIBPCX.md shows IBP is the UNIQUE route that
+   resolves it (it RAISES the divergent exponent before flattening, so the bulk
+   theta-phase coefficient is O(theta), bounded — the inline-Subtraction and
+   pinned-eps routes flatten by the vanishing exponent and oscillate too fast).
+   Oracle: NIntegrate of the COMPLEX original (Subtraction is NOT a valid oracle
+   here — same vanishing-exponent blind spot; planIBPCX.md §5.1 F2).
    ============================================================================ *)
 Print["----------------------------------------------------------------"];
-Print["  (C) DIVERGENT complex-A (Case B)  IBP refuses cleanly (splitdivmono)"];
+Print["  (C) DIVERGENT complex-A OFF-AXIS  IBP (pole~0, finite) vs NIntegrate"];
 
-Module[{epsD, polys, pe, Avals, spec, lift, ls, ld, fan, ibp},
+Module[{epsD, esStar = 0.01, dim = 2, polys, pe, Avals, spec, lift, ls, ld, fan,
+        niC, gv, fd, finNI, ibp, poleI, finI, imagPoles, ip},
   epsD = Symbol["epsCC47C"];
   polys = {1 + x[1] x[2] + 10^4 x[1]^2 + x[2]^2}; pe = {-2};
-  Avals = {-1 + epsD + 3/2 I, 0};   (* imaginary part ON the pole variable x1 -> Case B *)
+  Avals = {-1 + epsD + 3/2 I, 0};   (* imaginary part ON the pole variable x1 -> off-axis *)
 
   spec = <|"Polynomials" -> polys, "MonomialExponents" -> Avals, "PolynomialExponents" -> pe,
     "Variables" -> {x[1], x[2]}, "KinematicSymbols" -> {}, "RegulatorSymbol" -> epsD|>;
@@ -199,11 +209,42 @@ Module[{epsD, polys, pe, Avals, spec, lift, ls, ld, fan, ibp},
   ls = lift["LiftedSpec"]; ld = lift["LiftData"];
   fan = qr@computeFanScaled[qr@PolytopeVertices[(Times @@ ls["Polynomials"])^(-1), ls["Variables"]]];
 
+  (* Oracle: NIntegrate of the COMPLEX original.  Off-axis -> no pole; the value
+     is regular at eps=0, so fit I(eps)=f+c*eps and take the eps^0 part f. *)
+  niC[es_] := Module[{us, subr, jac, igc, Aev}, Aev = Avals /. epsD -> es;
+    us = Table[Unique["u"], {dim}]; subr = Table[x[i] -> us[[i]]/(1 - us[[i]]), {i, dim}];
+    jac = Times @@ Table[1/(1 - us[[i]])^2, {i, dim}];
+    igc = (Times @@ MapThread[#1^#2 &, {Table[x[i], {i, dim}], Aev}] *
+           Times @@ MapThread[#1^#2 &, {polys, pe}] /. subr) jac;
+    qr@NIntegrate[igc, Evaluate[Sequence @@ ({#, 0, 1} & /@ us)], Method -> "GlobalAdaptive",
+      PrecisionGoal -> 6, WorkingPrecision -> 30, MaxRecursion -> 60]];
+  gv = niC /@ N[{esStar, 2 esStar, 4 esStar}, 30];
+  fd = MapThread[{#1, #2} &, {N[{esStar, 2 esStar, 4 esStar}, 30], gv}];
+  finNI = (Fit[{#1, Re[#2]} & @@@ fd, {1, ee}, ee] /. ee -> 0) +
+          I (Fit[{#1, Im[#2]} & @@@ fd, {1, ee}, ee] /. ee -> 0);
+  Print["   NIntegrate finite (I at eps->0) = ", N@finNI, "  (values bounded -> no pole)"];
+
   ibp = qr@EvaluateTropicalMC[ls, fan, {{}}, "LiftData" -> ld, "Method" -> "IBP",
-    "ComplexExponentMode" -> "SplitRealImag", "Integrator" -> "MC", "NSamples" -> 100000,
+    "ComplexExponentMode" -> "SplitRealImag", "Integrator" -> "MC", "NSamples" -> 2000000,
     "RunChecks" -> False, "Verbose" -> False, "WorkingDirectory" -> wdir["divC_ibp"]];
-  cc47Assert["C IBP refuses Case-B complex-A (splitdivmono -> clean $Failed)",
-    ibp === $Failed, "$Failed", ToString[Head[ibp]]];
+  If[!(AssociationQ[ibp] && KeyExistsQ[ibp, "Results"]),
+    cc47Assert["C IBP off-axis returns a result", False, "Association[Results]",
+      ToString[Head[ibp]]]; Return[]];
+  poleI = ibp["Results"][[1]]["PoleCoefficient"]; finI = ibp["Results"][[1]]["FinitePart"];
+  (* Confirm the fixture REALLY realizes the off-axis condition (planIBPCX.md §9
+     risk #3): at least one divergent sector must carry ImagPole != 0. *)
+  imagPoles = (#["ImagPole"] & /@ ibp["IBPProcessedSectors"]);
+  ip = AnyTrue[imagPoles, (NumericQ[#] && Abs[#] > 0.01) || (!NumericQ[#] && !TrueQ[PossibleZeroQ[#]]) &];
+  Print["   IBP: pole=", N@poleI, "  finite=", N@finI, "   ImagPoles=", imagPoles];
+
+  cc47Assert["C fixture realizes off-axis (ImagPole != 0)", ip,
+    "some ImagPole != 0", "ImagPoles=" <> ToString[imagPoles, InputForm]];
+  cc47Assert["C IBP off-axis pole ~ 0 (cone is finite, no 1/eps)",
+    NumericQ[Abs[poleI]] && Abs[poleI] < 0.02,
+    "|pole_IBP|<0.02", "|pole|=" <> ToString[sci@Abs[poleI]]];
+  cc47Assert["C IBP off-axis finite vs NIntegrate complex original",
+    NumericQ[Abs[finI - finNI]] && Abs[(finI - finNI)/finNI] < 0.03,
+    "rel<0.03", "rel=" <> ToString[sci@Abs[(finI - finNI)/finNI]]];
 ];
 
 Print[];
@@ -211,7 +252,8 @@ Print["================================================================"];
 If[$cc47Pass,
   Print["CC47 PASS  complex MONOMIAL exponents A x lifting verified: SplitRealImag ",
         "clears liftcomplex; convergent matches NIntegrate; divergent IBP & ",
-        "Subtraction agree (Case A); Case B refuses cleanly.  failures={}"],
+        "Subtraction agree (Case A); off-axis IBP (pole~0,finite) matches NIntegrate ",
+        "(planIBPCX.md).  failures={}"],
   Print["CC47 FAIL  failed: ", $cc47Fail]];
 Print["================================================================"];
 If[!$cc47Pass, Quit[1]];

@@ -124,34 +124,20 @@ const int MAX_DIM = 20;
 extern "C" {
 #include <cuba.h>
 }
-static IntegrandFunc g_fn     = nullptr;
-static const double* g_params = nullptr;
-static int           g_dim    = 0;
-static int cubaWrap(const int* ndim, const cubareal xx[], const int* ncomp,
-                    cubareal ff[], void* userdata) {
+#include <algorithm>
+static const double* gb_par = nullptr;
+static int gb_sector = 0, gb_dim = 0, gb_kp0 = 0, gb_chunk = 0;
+static int cubaBatch(const int* ndim, const cubareal xx[], const int* ncomp,
+                     cubareal ff[], void* userdata) {
     (void)ndim; (void)ncomp; (void)userdata;
     double y[MAX_DIM];
-    for (int i = 0; i < g_dim; ++i) y[i] = (double)xx[i];
-    cx v = g_fn(y, g_params);
-    ff[0] = v.real(); ff[1] = v.imag();
-    return 0;
-}
-// integrate one function with Vegas; a 0-dim integrand (e.g. the IBP
-// boundary of a 1-var sector) is a constant, so eval it directly.
-static void vegasOne(int s, const double* params, long long maxeval,
-                     double epsrel, double epsabs, int seed,
-                     double out[2], double err[2]) {
-    g_fn = integrand_table[s]; g_dim = integrand_dim[s]; g_params = params;
-    if (g_dim == 0) {
-        double y0[1] = {0.0}; cx v = g_fn(y0, params);
-        out[0] = v.real(); out[1] = v.imag(); err[0] = 0.0; err[1] = 0.0;
-        return;
+    for (int i = 0; i < gb_dim; ++i) y[i] = (double)xx[i];
+    for (int c = 0; c < gb_chunk; ++c) {
+        const double* pp = (N_PARAMS > 0) ? &gb_par[(size_t)(gb_kp0 + c) * N_PARAMS] : nullptr;
+        cx v = integrand_table[gb_sector](y, pp);
+        ff[2*c] = v.real(); ff[2*c + 1] = v.imag();
     }
-    int neval = 0, fail = 0; cubareal I[2], E[2], Pr[2];
-    Vegas(g_dim, 2, cubaWrap, nullptr, 1, epsrel, epsabs, 0, seed,
-          0, (int)maxeval, 1000, 500, 1000, 0, nullptr, nullptr,
-          &neval, &fail, I, E, Pr);
-    out[0] = I[0]; out[1] = I[1]; err[0] = E[0]; err[1] = E[1];
+    return 0;
 }
 #endif
 
@@ -178,31 +164,58 @@ int main(int argc, char* argv[]) {
     }
     fin.close();
     int n_kp = (int)kinematic_data.size();
-    std::cerr << "Read " << n_kp << " kinematic points (Vegas IBP)" << std::endl;
+    std::cerr << "Read " << n_kp << " kinematic points (Vegas batch IBP)" << std::endl;
 
     int n_ibp = N_INTEGRANDS - N_CONV;
-    std::vector<std::array<double, 4>> results((1 + n_ibp) * n_kp);
+    std::vector<std::array<double, 4>> results((size_t)(1 + n_ibp) * n_kp);
 
 #ifdef TROPICAL_USE_CUBA
     { const int zero = 0; cubacores(&zero, &zero); }
     const double epsrel = 1.e-12, epsabs = 1.e-300;
-    const int    seed   = 0;
-    for (int kp = 0; kp < n_kp; ++kp) {
-        const double* params = kinematic_data[kp].data();
-        // convergent sectors (s < N_CONV) summed into line 0
-        double cre = 0, cim = 0, cvre = 0, cvim = 0;
-        for (int s = 0; s < N_CONV; ++s) {
-            double I[2], E[2]; vegasOne(s, params, maxeval, epsrel, epsabs, seed, I, E);
-            cre += I[0]; cim += I[1]; cvre += E[0]*E[0]; cvim += E[1]*E[1];
+    const int    seed    = 0;
+    const int    maxComp = 512;   // ncomp ceiling -- never exceed (Vegas segfaults above it)
+    const int    kpPerChunk = (maxComp / 2 < 1) ? 1 : maxComp / 2;  // 2 comps (re,im) per kp
+    std::vector<double> flat_par((size_t)n_kp * (N_PARAMS > 0 ? N_PARAMS : 1), 0.0);
+    for (int kp = 0; kp < n_kp; ++kp)
+        for (int p = 0; p < N_PARAMS; ++p) flat_par[(size_t)kp * N_PARAMS + p] = kinematic_data[kp][p];
+    gb_par = flat_par.data();
+    // (1 + n_ibp) output rows per kp: row 0 = convergent sum, rows 1..n_ibp = IBP funcs.
+    const size_t nrows = (size_t)(1 + n_ibp) * n_kp;
+    std::vector<double> ore(nrows, 0), oim(nrows, 0), ovre(nrows, 0), ovim(nrows, 0);
+    for (int s = 0; s < N_INTEGRANDS; ++s) {
+        gb_sector = s; gb_dim = integrand_dim[s];
+        // convergent sectors (s < N_CONV) accumulate into row 0; each IBP
+        // function (s >= N_CONV) writes its own row (s - N_CONV + 1).
+        int rowInKp = (s < N_CONV) ? 0 : (s - N_CONV + 1);
+        if (gb_dim == 0) {
+            // 0-dim integrand (e.g. IBP boundary of a 1-var sector): a constant
+            // per kp -- evaluate directly, no Vegas.
+            for (int kp = 0; kp < n_kp; ++kp) {
+                const double* pp = (N_PARAMS > 0) ? &flat_par[(size_t)kp * N_PARAMS] : nullptr;
+                double y0[1] = {0.0}; cx v = integrand_table[s](y0, pp);
+                size_t r = (size_t)kp * (1 + n_ibp) + rowInKp;
+                ore[r] += v.real(); oim[r] += v.imag();
+            }
+            continue;
         }
-        results[kp * (1 + n_ibp)] = {cre, cim, std::sqrt(cvre), std::sqrt(cvim)};
-        // each IBP function (s >= N_CONV) on its own line
-        for (int s = N_CONV; s < N_INTEGRANDS; ++s) {
-            double I[2], E[2]; vegasOne(s, params, maxeval, epsrel, epsabs, seed, I, E);
-            int idx = kp * (1 + n_ibp) + (s - N_CONV + 1);
-            results[idx] = {I[0], I[1], E[0], E[1]};
+        for (int k0 = 0; k0 < n_kp; k0 += kpPerChunk) {
+            int cs = std::min(kpPerChunk, n_kp - k0);
+            gb_kp0 = k0; gb_chunk = cs;
+            int ncomp = 2 * cs;
+            std::vector<cubareal> integ(ncomp), err(ncomp), prob(ncomp);
+            int neval = 0, fail = 0;
+            Vegas(gb_dim, ncomp, cubaBatch, nullptr, 1, epsrel, epsabs, 0, seed,
+                  0, (int)maxeval, 1000, 500, 1000, 0, nullptr, nullptr,
+                  &neval, &fail, integ.data(), err.data(), prob.data());
+            for (int c = 0; c < cs; ++c) {
+                size_t r = (size_t)(k0 + c) * (1 + n_ibp) + rowInKp;
+                ore[r]  += integ[2*c];        oim[r]  += integ[2*c + 1];
+                ovre[r] += err[2*c]*err[2*c]; ovim[r] += err[2*c + 1]*err[2*c + 1];
+            }
         }
     }
+    for (size_t r = 0; r < nrows; ++r)
+        results[r] = {ore[r], oim[r], std::sqrt(ovre[r]), std::sqrt(ovim[r])};
 #else
     (void)maxeval;
     std::cerr << "ERROR: built without CUBA. Rebuild with -DTROPICAL_USE_CUBA "
@@ -218,6 +231,6 @@ int main(int argc, char* argv[]) {
              << results[i][2] << " " << results[i][3] << "\n";
     }
     fout.close();
-    std::cerr << "Done. Processed " << n_kp << " kinematic points." << std::endl;
+    std::cerr << "Done. Processed " << n_kp << " kinematic points (batched IBP)." << std::endl;
     return 0;
 }
