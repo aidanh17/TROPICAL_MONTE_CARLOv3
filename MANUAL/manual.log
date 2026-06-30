@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  30 JUN 2026 12:43
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  30 JUN 2026 13:46
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1112,18 +1112,18 @@ Underfull \hbox (badness 2922) in paragraph at lines 755--756
  []
 
 
-Underfull \hbox (badness 1997) in paragraph at lines 756--757
+Underfull \hbox (badness 1997) in paragraph at lines 757--758
 []\T1/lmr/m/n/10.95 Fan in lifted mode is not $\OT1/lmr/m/n/10.95 (\OML/lmm/m/i
 t/10.95 n[]\OT1/lmr/m/n/10.95 1)$\T1/lmr/m/n/10.95 -
  []
 
 
-Underfull \hbox (badness 5302) in paragraph at lines 757--758
+Underfull \hbox (badness 5302) in paragraph at lines 758--759
 []\T1/lmr/m/n/10.95 Lifted New-ton poly-tope is lower-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 757--758
+Underfull \hbox (badness 10000) in paragraph at lines 758--759
 \T1/lmr/m/n/10.95 dimensional; sup-ply ex-plicit
  []
 
@@ -1137,7 +1137,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [21]
-Overfull \vbox (369.61867pt too high) has occurred while \output is active []
+Overfull \vbox (478.4187pt too high) has occurred while \output is active []
 
 
 
@@ -1158,26 +1158,26 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [23]
-Overfull \hbox (3.807pt too wide) in paragraph at lines 780--782
+Overfull \hbox (3.807pt too wide) in paragraph at lines 781--783
 []\T1/lmr/bx/n/10.95 High-D VE-GAS er-ror bars can lie. \T1/lmr/m/n/10.95 VE-GA
 S de-faults (\T1/lmtt/m/n/10.95 NStart=1000, NIncrease=500,
  []
 
 
-Overfull \hbox (27.2394pt too wide) in paragraph at lines 780--782
+Overfull \hbox (27.2394pt too wide) in paragraph at lines 781--783
 \T1/lmtt/m/n/10.95 NBatch=1000\T1/lmr/m/n/10.95 ) pro-duce con-fi-dently wrong 
 val-ues for sec-tor di-men-sion $\U/msa/m/n/10.95 & \OT1/lmr/m/n/10.95 6$\T1/lm
 r/m/n/10.95 . \T1/lmtt/m/n/10.95 resolveVegasSizing
  []
 
 
-Overfull \hbox (4.03336pt too wide) in paragraph at lines 786--788
+Overfull \hbox (4.03336pt too wide) in paragraph at lines 787--789
 []\T1/lmr/bx/n/10.95 Kinematic-symbol co-ef-fi-cients can-not be auto-lifted. \
 T1/lmtt/m/n/10.95 DetectExtremeCoefficients
  []
 
 
-Underfull \hbox (badness 1270) in paragraph at lines 798--800
+Underfull \hbox (badness 1270) in paragraph at lines 799--801
 []\T1/lmr/bx/n/10.95 FIESTA cross-checks re-quire FI-ESTA and path ed-its. \T1/
 lmr/m/n/10.95 The \T1/lmtt/m/n/10.95 CC/ \T1/lmr/m/n/10.95 scripts
  []
@@ -1219,19 +1219,19 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [27]
-Overfull \hbox (304.47583pt too wide) in paragraph at lines 1021--1022
+Overfull \hbox (304.47583pt too wide) in paragraph at lines 1022--1023
 []\T1/lmr/m/n/10.95 Known-limitation en-force-ment: \T1/lmtt/m/n/10.95 nested/n
 estedIBP/nocuba/badcpp/liftnopivot/liftcomplex/liftdegenerate/vegasbudget
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1024--1025
+Underfull \hbox (badness 10000) in paragraph at lines 1025--1026
 []\T1/lmr/m/n/10.95 Divergence $\OMS/lmsy/m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 com-
 plex ex-po-nents, full ma-trix: $\OMS/lmsy/m/n/10.95 f$\T1/lmr/m/n/10.95 IBP,
  []
 
 
-Underfull \hbox (badness 1424) in paragraph at lines 1032--1033
+Underfull \hbox (badness 1424) in paragraph at lines 1033--1034
 []\T1/lmr/m/n/10.95 Complex-\T1/lmr/m/it/10.95 monomial\T1/lmr/m/n/10.95 -$\OML
 /lmm/m/it/10.95 A$ $\OMS/lmsy/m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 lift $\OMS/lmsy/
 m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 di-ver-gence (\T1/lmtt/m/n/10.95 SplitRealImag
@@ -1239,14 +1239,14 @@ m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 di-ver-gence (\T1/lmtt/m/n/10.95 SplitRealImag
  []
 
 
-Underfull \hbox (badness 5771) in paragraph at lines 1033--1034
+Underfull \hbox (badness 5771) in paragraph at lines 1034--1035
 []\T1/lmr/m/n/10.95 Complex ex-po-nents $\OMS/lmsy/m/n/10.95 ^^B$ \T1/lmr/m/n/1
 0.95 di-ver-gence, \T1/lmr/m/it/10.95 un-lifted\T1/lmr/m/n/10.95 : monomial-$\O
 ML/lmm/m/it/10.95 A$
  []
 
 
-Underfull \hbox (badness 1122) in paragraph at lines 1033--1034
+Underfull \hbox (badness 1122) in paragraph at lines 1034--1035
 \T1/lmr/m/n/10.95 and polynomial-$\OML/lmm/m/it/10.95 B$\T1/lmr/m/n/10.95 , \T1
 /lmtt/m/n/10.95 Direct$\OT1/lmr/m/n/10.95 =$\T1/lmtt/m/n/10.95 SplitRealImag$\O
 T1/lmr/m/n/10.95 =$\T1/lmr/m/n/10.95 exact $\OT1/lmr/m/n/10.95 ^^@$\T1/lmr/m/n/
@@ -1284,13 +1284,13 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [30]
-Underfull \hbox (badness 1331) in paragraph at lines 1081--1082
+Underfull \hbox (badness 1331) in paragraph at lines 1082--1083
 []\T1/lmr/m/n/10.95 C++17 re-quired (\T1/lmtt/m/n/10.95 -std=c++17\T1/lmr/m/n/1
 0.95 ). OpenMP rec-om-mended
  []
 
 
-Underfull \hbox (badness 2538) in paragraph at lines 1083--1084
+Underfull \hbox (badness 2538) in paragraph at lines 1084--1085
 []\T1/lmr/m/n/10.95 ([][]$\T1/lmtt/m/n/10.95 https : / / feynarts . de / cuba/$
 [][]\T1/lmr/m/n/10.95 ) Re-quired only for \T1/lmtt/m/n/10.95 "Integrator" ->
  []
@@ -1354,7 +1354,7 @@ st/fonts/type1/public/lm/lmtk10.pfb></usr/local/texlive/2025/texmf-dist/fonts/t
 ype1/public/lm/lmtt10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publi
 c/amsfonts/symbols/msam10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/p
 ublic/amsfonts/symbols/msbm10.pfb>
-Output written on manual.pdf (32 pages, 549530 bytes).
+Output written on manual.pdf (32 pages, 549779 bytes).
 PDF statistics:
  960 PDF objects out of 1000 (max. 8388607)
  862 compressed objects within 9 object streams

@@ -215,6 +215,7 @@ TropicalEval::liftdegenerate = "EvaluateTropicalMCLifted: the lifted Newton poly
 TropicalEval::liftdivdomain = "ProcessSectorLifted: cone `1` — the divergent variable couples to the lifted domain constraint (ic_k != 0) for every admissible pivot.  The 1/eps pole and the domain face interact (Case B, planAXpDIV.md §3); a log-space remap is required (future work).  Aborting ($Failed).";
 TropicalEval::splitdivmono = "IBPProcessSector: cone `1` — the divergent direction's imaginary exponent theta_k = `2` is eps-DEPENDENT (it scales with the regulator).  A constant theta_k is fine — it is the off-axis case the IBP route now supports (s_k = c_k eps + i theta_k is regular at eps=0; planIBPCX.md §1/§3).  But an eps-dependent theta_k ~ 1/eps reintroduces the fast oscillation the bounded IBP integrand relies on being O(theta), so it cannot be resolved.  The supported case is the standard real-eps regulator with eps-free Im(B)/Im(A) (planIBPCX.md §8).  Aborting ($Failed) rather than emitting a wrong value.";
 TropicalEval::ibpresidual = "IBPProcessSector: cone `1` — term `2` retains a genuine (on-axis, theta=0) divergence in y_`3` (alpha0 = `4`) after IBP reduction.  This is an unreduced residual / higher-order pole the numerical path does not assemble.  Aborting ($Failed).";
+TropicalEval::ibpvalmultidiv = "ValidateIBP: cone `1` is a one-pole + N-off-axis MultiDiv sector (planIBPMULTIDIV.md); the finite-eps single-pole reconstruction oracle does not cover the multi-corner assembly (validated instead against the closed-form Dirichlet oracle, cc_51/cc_52).  Returning $Failed (not validated) rather than indexing absent IBPTerms.";
 TropicalEval::offaxispow = "IBPProcessSector: cone `1` — divergent direction y_`2` is power-divergent off-axis (Re(alpha0) < 0 with theta != 0); a single IBP step does not raise it to Re > 0 (planIBPMULTIDIV.md §3.1).  The supported off-axis case is logarithmic (Re(alpha0) = 0).  Aborting ($Failed) rather than emitting a divergent integrand.";
 TropicalEval::splitliftdiv = "EvaluateTropicalMC: SplitRealImag x lifting x divergence is supported only on the IBP route (Method -> Automatic / \"IBP\") and the pinned-eps Subtraction route (LaurentFromSubtraction); the symbolic-eps inline Subtraction path (Method -> \"None\"/\"Subtraction\") does not re-derive the per-piece oscillatory phase (planCXLIFTDIV.md C1).  Use Method -> Automatic (default) or LaurentFromSubtraction for lifted+divergent complex-exponent integrals.";
 
@@ -5468,13 +5469,18 @@ Module[
       If[TrueQ[cm == 0], 0, am2/cm]],
     {m, offDirs}];
 
+  (* PrefactorBase eps-derivative (planAXpDIV.md §4.1): finite-part correction
+     (P'/P)(0)*pole.  Computed UNCONDITIONALLY (0 for unlifted, nonzero for a
+     lifted pfBase carrying eps) — the no-pole branch also needs it for the
+     driver's degenerate-kp fallback, where a lone off-axis becomes a genuine
+     pole and the (P'/P)(0)*pole term must be reinstated. *)
+  dlog = If[eps === None, 0, D[Log[pfBase], eps] /. eps -> 0];
   (* Pole data (the single 1/eps factor), if a genuine pole is present. *)
   If[hasPole,
     ck   = D[aVals[[k]], eps] /. eps -> 0;
     Module[{ak2 = (1/2) D[aVals[[k]], {eps, 2}] /. eps -> 0},
-      rk = If[TrueQ[ck == 0], 0, ak2/ck]];
-    dlog = If[eps === None, 0, D[Log[pfBase], eps] /. eps -> 0],
-    ck = None; rk = 0; dlog = 0
+      rk = If[TrueQ[ck == 0], 0, ak2/ck]],
+    ck = None; rk = 0
   ];
 
   <|"ConeIndex"             -> sectorData["ConeIndex"],
@@ -5734,16 +5740,17 @@ Module[
       alpha0 = alpha /. eps -> 0;
       alpha1 = D[alpha, eps] /. eps -> 0;
 
-      (* Verify all alpha0 > 0.  Off-axis-aware (planIBPMULTIDIV.md §3.4): a
-         Re(alpha0)<=0 direction whose effective exponent carries a nonzero
-         imaginary part is a bounded off-axis term (finite), not a residual; only
-         a genuine on-axis (theta=0) residual aborts.  In the single-pole path
-         every divergent direction is a pole that one IBP step raises, so this
-         never fires for supported sectors — it is a backstop. *)
+      (* Verify all alpha0 > 0 (planIBPMULTIDIV.md §3.4).  This is the SINGLE-POLE
+         path: any off-axis (Re<=0, theta!=0) direction was routed to the MultiDiv
+         path by the front guard, so a surviving Re(alpha0)<=0 term here is ALWAYS
+         a genuine unreduced residual (whether or not it carries an imaginary part:
+         flattening by an exponent with Re<=0 would emit a divergent integrand).
+         Abort on ANY Re<=0 — a clean refusal, never a silent wrong number.  In
+         supported sectors the lone pole is raised to Re>=1 so this never fires. *)
       Do[
         If[(NumericQ[alpha0[[i]]] && Re[alpha0[[i]]] <= 0) ||
            TrueQ[Re[alpha0[[i]]] <= 0],
-          If[TrueQ[PossibleZeroQ[Im[alpha0[[i]]]]],
+          Module[{},
             Message[TropicalEval::ibpresidual, sectorData["ConeIndex"], t, i,
                     alpha0[[i]]];
             Throw[$Failed, "ibpverify"]
@@ -5893,10 +5900,15 @@ Module[
   a0           = aVals /. eps -> 0;
   a1           = D[aVals, eps] /. eps -> 0;
 
+  (* Only genuine 1/eps POLES (Re(a0)=0 AND theta=0) get the y_k=0 boundary check:
+     a co-located OFF-AXIS direction (Re=0, theta!=0; planIBPMULTIDIV.md) is finite
+     with c_k = a1[[k]] = 0, so the endpoint test y_k^{c_k eps} = y_k^0 = 1 would
+     fire a spurious boundary-violation warning for a sector handled correctly.
+     Skip off-axis directions here. *)
   divVars = {};
   Do[
-    If[TrueQ[Re[a0[[i]]] <= 0] ||
-       (NumericQ[a0[[i]]] && Re[a0[[i]]] <= 0),
+    If[(TrueQ[Re[a0[[i]]] <= 0] || (NumericQ[a0[[i]]] && Re[a0[[i]]] <= 0)) &&
+       ibpDivClass[sectorData, i, eps] === "Pole",
       AppendTo[divVars, i]
     ],
     {i, n}
@@ -5990,6 +6002,17 @@ Module[
    boundaryVal, ibpTermVals, ibpSum,
    ak, reconstructed, relError,
    B0},
+
+  (* MultiDiv sectors (one pole + N off-axis, planIBPMULTIDIV.md) carry "Corners"
+     and per-corner pieces, NOT the single-pole "IBPTerms"/"BoundaryData"/
+     "DivergentVariable" this finite-eps reconstruction consumes.  This oracle
+     does not cover the multi-corner assembly (which is validated against the
+     closed-form Dirichlet oracle in cc_51/cc_52); refuse cleanly rather than
+     index a Missing key. *)
+  If[TrueQ[ibpSectorData["MultiDiv"]],
+    Message[TropicalEval::ibpvalmultidiv, ibpSectorData["ConeIndex"]];
+    Return[$Failed]
+  ];
 
   eps      = integrandSpec["RegulatorSymbol"];
   n        = sectorData["Dimension"];
@@ -6629,7 +6652,7 @@ Module[
              No pole (all off-axis): pole = 0, finite = K0 NB.  This reduces to the
              single-pole / single-off-axis formulas below for |D| = 1. *)
             Module[{ps, pieces, NB, NL, K0, K1, offTh, offCk, offRk, hasPole,
-                    ckM, rkM, dlogM, degenerate},
+                    dlogM, zeroQ, vanish, finOff, nPolesKp, cP, rP, indet},
               ps     = ibpProcessedSectors[[s]];
               pieces = sMap["Pieces"];
               offTh  = ps["OffAxisThetas"] /. kinRules;
@@ -6637,6 +6660,10 @@ Module[
               offRk  = ps["OffAxisRks"]    /. kinRules;
               hasPole = TrueQ[ps["HasPole"]];
               dlogM  = ps["DLogPrefactor"] /. kinRules;
+              indet[msg_] := (
+                Print["WARNING: IBP MultiDiv sector ", sMap["ConeIndex"],
+                      " at kp ", i, ": ", msg, " -> result Indeterminate."];
+                poleCont = Indeterminate; finiteCont = Indeterminate);
 
               (* Signed corner sums (always needed). *)
               NB = 0.; NL = 0.;
@@ -6652,38 +6679,49 @@ Module[
                 ],
                 {p, Length[pieces]}];
 
-              (* Mixed-grid guard: a symbolically-nonzero theta that vanishes at
-                 THIS kp.  All off-axis theta off-axis -> the standard assembly;
-                 a lone off-axis crossing 0 (no co-located pole) becomes a genuine
-                 1/(c_m eps) pole at this kp -> fall back to the real-pole formula
-                 (exactly as the single-off-axis path does); a co-located pole or
-                 a second off-axis crossing 0 is a 1/eps^2 the path does not
-                 assemble -> Indeterminate (clean, flagged, never a wrong number). *)
-              degenerate = AnyTrue[offTh, (Abs[N[#]] < 10.^-12) &];
+              (* Count the genuine poles AT THIS kp.  The off-axis directions are
+                 finite (1/(i theta)) UNLESS a symbolically-nonzero theta vanishes
+                 EXACTLY at this kp (a mixed-grid crossing, e.g. mu hitting the
+                 real axis), in which case that direction becomes a genuine
+                 1/(c eps) pole here.  zeroQ uses PossibleZeroQ (exact / machine-0),
+                 NOT a tolerance — a tiny-but-nonzero theta stays off-axis (its
+                 1/(i theta) is a genuine large value, not a pole).  totalPoles =
+                 (genuine pole?) + #(off-axis that vanished).
+                   0  -> all off-axis (pole 0, finite K0*NB),
+                   1  -> exactly one 1/eps pole (genuine OR a vanished off-axis);
+                         every OTHER off-axis stays finite 1/(i theta),
+                   >=2 -> a 1/eps^{>=2} this path does not assemble (Indeterminate). *)
+              zeroQ[x_] := TrueQ[PossibleZeroQ[x]] || (NumericQ[x] && x == 0);
               Which[
-                !degenerate,
-                  K0 = Times @@ (1/(I*#) & /@ offTh);
-                  K1 = K0 * Total[-offCk/(I*offTh)];
-                  If[hasPole,
-                    ckM = ps["ck"] /. kinRules;
-                    rkM = ps["rk"] /. kinRules;
-                    poleCont   = K0 * NB / ckM;
-                    finiteCont = (K0*NL + (K1 - rkM*K0)*NB)/ckM + dlogM*poleCont;
-                  ,
-                    poleCont   = 0;
-                    finiteCont = K0 * NB;
-                  ],
-                !hasPole && Length[offTh] == 1,
-                  (* lone off-axis became the pole at this kp *)
-                  ckM = First[offCk]; rkM = First[offRk];
-                  poleCont   = NB / ckM;
-                  finiteCont = (NL - rkM*NB)/ckM + dlogM*poleCont,
+                !AllTrue[offTh, NumericQ],
+                  indet["an off-axis theta is non-numeric after kinematics " <>
+                        "(a KinematicSymbol may be missing from the spec)"],
                 True,
-                  Print["WARNING: IBP MultiDiv sector ", sMap["ConeIndex"],
-                        ": off-axis theta ~ 0 at kp ", i,
-                        " with a co-located pole / second off-axis (1/eps^2 not ",
-                        "assembled); result set Indeterminate at this kp."];
-                  poleCont = Indeterminate; finiteCont = Indeterminate
+                  vanish   = Select[Range[Length[offTh]], zeroQ[offTh[[#]]] &];
+                  finOff   = Complement[Range[Length[offTh]], vanish];
+                  nPolesKp = If[hasPole, 1, 0] + Length[vanish];
+                  Which[
+                    nPolesKp == 0,
+                      poleCont   = 0;
+                      finiteCont = (Times @@ (1/(I*#) & /@ offTh)) * NB,
+                    nPolesKp == 1,
+                      (* the single pole: the genuine pole, or the lone vanished
+                         off-axis.  Its (c,r); the finite off-axis = non-vanishing. *)
+                      {cP, rP} = If[hasPole,
+                        {ps["ck"] /. kinRules, ps["rk"] /. kinRules},
+                        {offCk[[First[vanish]]], offRk[[First[vanish]]]}];
+                      If[zeroQ[cP],
+                        indet["the 1/eps pole's c vanishes here (unregulated / " <>
+                              "higher-order)"],
+                        K0 = Times @@ (1/(I*offTh[[#]]) & /@ finOff);
+                        K1 = K0 * Total[Table[-offCk[[j]]/(I*offTh[[j]]),
+                                              {j, finOff}]];
+                        poleCont   = K0 * NB / cP;
+                        finiteCont = (K0*NL + (K1 - rP*K0)*NB)/cP + dlogM*poleCont],
+                    True,
+                      indet["two or more 1/eps poles coincide (1/eps^{>=2} not " <>
+                            "assembled)"]
+                  ]
               ];
               ibpContribPole   += poleCont;
               ibpContribFinite += finiteCont;
