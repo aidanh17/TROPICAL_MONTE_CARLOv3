@@ -460,6 +460,20 @@ the genuine-complex-pole (`θ=0`) case strengthened to a 4-way Subtraction↔IBP
   reintroduce fast oscillation; guard and refuse if it ever arises (standard real-ε
   regulator with eps-free `Im(B)/Im(A)` is fine and is the case here).
 
+**Now SUPPORTED (was future work; new_request UPDATE 2026-06-30, cc_53):**
+- The (real) regulator `ε` sitting *inside* an exponent, e.g. the principal-series
+  propagator power `δ = 3/2 + i ν - ε`.  Previously `Im[δ] = ν - Im[ε]` and
+  `Re[δ] = 3/2 - Re[ε]` left stray `Im[ε]`/`Re[ε]` (the regulator was not assumed
+  real), so the engine (a) saw the *constant* off-axis `θ_k = ν` as eps-dependent and
+  refused (`splitdivmono` misfire), and (b) leaked `(ε).imag()` / `Derivative(Re)`
+  into the emitted C++.  The fix assumes the regulator is real wherever `B`/`θ` is
+  formed: `ibpImagPole` refines `θ` under `ε ∈ Reals` (the `splitdivmono` guard reads
+  it), `imagPolyInfo` returns the eps-free `Im(B)` for the phase, and `realifyPolyB`
+  forms `Re(B)` by subtracting `i·Im(B)` (not `MapAt[Re]`).  A *genuinely*
+  eps-dependent `Im` still keeps a bare `ε` and is still refused (negative control).
+  This is the gating capability for lifting the divergent presectors of the 4-point
+  figure (`§3.5` / the "one real pole + N off-axis" item).
+
 ---
 
 ## 9. Open questions / risks

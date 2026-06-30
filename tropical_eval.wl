@@ -2350,6 +2350,44 @@ imagMonoInfo[spec_, eps_] := Module[{realSyms, exps, imA},
    Real) and leak cx(...) into the domain indicator.  (planAXpDIVv2.md §4.2.) *)
 realifyMonoA[spec_, imA_] := MapAt[# - I*imA &, spec, {Key["MonomialExponents"]}];
 
+(* imagPolyInfo — the POLYNOMIAL-exponent twin of imagMonoInfo (line ~2336).
+   Returns the eps-free Im(B_j), the oscillatory-phase coefficient
+   (ImagPolyExponents) the SplitRealImag codegen emits.  Two symbols must be
+   declared REAL before taking Im, exactly as imagMonoInfo does for A:
+     - the regulator (physically real): otherwise Im[... - eps] keeps a spurious
+       Im[eps], which leaks "(eps).imag()" into C++ and makes the divergence guard
+       see theta as eps-DEPENDENT (splitdivmono misfire);
+     - the KinematicSymbols (planR.md R2: an exponent may carry a real kinematic
+       symbol, e.g. a dimension/mass).  For the principal-series propagator power
+       delta = 3/2 + i nu - eps with nu a SYMBOL, a bare Im[I nu] evaluates to
+       Re[nu] (NOT nu), so realifyPolyB's B - I*Im(B) would stay COMPLEX and leak
+       "(nu).real()" into C++ / trip liftcomplex.  Declaring nu real gives Im = nu.
+   Unlike imagMonoInfo (which substitutes eps->0), the regulator is folded into the
+   declare-REAL set, NOT substituted: a genuinely eps-dependent Im(B) (the out-of-
+   scope theta ~ 1/eps) then keeps a bare eps and is still caught by the downstream
+   FreeQ guard, rather than being silently zeroed.  Exact / no float (#1); for real
+   or eps-free-complex B this equals Im[B] (#25).  (new_request UPDATE 2026-06-30;
+   mirrors imagMonoInfo / realifyMonoA / planAXpDIVv2.md §4.2.) *)
+imagPolyInfo[spec_] := Module[{realSyms, exps, eps, imB},
+  realSyms = Lookup[spec, "KinematicSymbols", {}];
+  eps      = Lookup[spec, "RegulatorSymbol", None];
+  If[eps =!= None, realSyms = Append[realSyms, eps]];
+  exps     = spec["PolynomialExponents"];
+  imB = If[ListQ[realSyms] && Length[realSyms] > 0,
+    Assuming[Element[realSyms, Reals], Simplify[Im[exps]]], Im[exps]];
+  imB];
+
+(* realifyPolyB — realify the POLYNOMIAL exponents by SUBTRACTING their eps-free
+   imaginary part, exactly as realifyMonoA does for A (NOT MapAt[Re], which wraps
+   the real regulator eps in Re[eps] when eps sits in B: Re[3/2 + i nu - eps]
+   becomes 3/2 - Re[eps], whose eps-derivative emits an unconverted Derivative(Re)
+   into C++).  B - I*imB leaves the regulator as a TRUE real (3/2 + i nu - eps ->
+   3/2 - eps), so the log-insertion / pole machinery sees a clean eps.  Like
+   realifyMonoA, MUST run BEFORE any eps-pinning so the subtraction is symbolic-
+   exact (after pinning it would leave Complex[float, 0.]).  Identical to Re(B)
+   for real / eps-free-complex B (#25).  (new_request UPDATE 2026-06-30.) *)
+realifyPolyB[spec_, imB_] := MapAt[# - I*imB &, spec, {Key["PolynomialExponents"]}];
+
 (* --------------------------------------------------------------------------
    emitBaseFuncBody — the shared C++ body for a "base" integrand function:
    the signature, log_y[] setup, the per-polynomial monomial sums, the
@@ -4113,7 +4151,7 @@ Module[
      oscillatory phase (complex log P + MonoFactorLog).  Direct mode and the
      real-exponent path leave specForProc = the spec unchanged and attach no
      ImagPolyExponents, so the emitted C++ is byte-identical (#25). *)
-  imBList  = Im[integrandSpec["PolynomialExponents"]];
+  imBList  = imagPolyInfo[integrandSpec];   (* eps-free Im(B); see imagPolyInfo *)
   hasImagB = AnyTrue[imBList, (!TrueQ[PossibleZeroQ[#]]) &];
   (* planAXpDIVv2.md §4.1: the split must ALSO engage when the MONOMIAL exponents
      A are complex (the bubble at imaginary mu), not only when B is.  imAList is
@@ -4162,10 +4200,12 @@ Module[
             AnyTrue[
               Table[ProcessSectorLifted[
                       If[cxSplit,
-                         (* realify both families: Re(B), and subtract Im(A) via
-                            realifyMonoA (eps-preserving — see its docstring). *)
+                         (* realify both families by SUBTRACTING the eps-free
+                            imaginary parts (realifyPolyB / realifyMonoA), so a
+                            regulator inside B/A stays a true real — see their
+                            docstrings; divergence lives in Re only. *)
                          realifyMonoA[
-                           MapAt[Re, liftedSpec, {Key["PolynomialExponents"]}],
+                           realifyPolyB[liftedSpec, imBList],
                            imAList],
                          liftedSpec],
                       fanData[[1]], fanData[[2, s]],
@@ -4265,12 +4305,13 @@ Module[
        Complex[float, 0.] into the domain indicator). *)
     If[cxSplit && hasImagA,
       specForProc = realifyMonoA[specForProc, imAList]];
+    (* Re(B) by eps-free subtraction, BEFORE pinning (realifyPolyB docstring). *)
+    If[cxSplit,
+      specForProc = realifyPolyB[specForProc, imBList]];
     If[epsVal =!= None && eps =!= None,
       specForProc = MapAt[# /. eps -> epsVal &, specForProc, {Key["MonomialExponents"]}];
       specForProc = MapAt[# /. eps -> epsVal &, specForProc, {Key["PolynomialExponents"]}]
     ];
-    If[cxSplit,
-      specForProc = MapAt[Re, specForProc, {Key["PolynomialExponents"]}]];
     allSectorData = {};
     Catch[
       Do[
@@ -4328,6 +4369,9 @@ Module[
            see its docstring. *)
         If[cxSplit && hasImagA,
           specToUse = realifyMonoA[specToUse, imAList]];
+        (* Re(B) by eps-free subtraction, BEFORE pinning (realifyPolyB docstring). *)
+        If[cxSplit,
+          specToUse = realifyPolyB[specToUse, imBList]];
         specToUse = If[epsVal =!= None && eps =!= None,
           MapAt[# /. eps -> epsVal &, specToUse,
                 {Key["MonomialExponents"]}] //
@@ -4335,8 +4379,6 @@ Module[
                 {Key["PolynomialExponents"]}] &,
           specToUse
         ];
-        If[cxSplit,
-          specToUse = MapAt[Re, specToUse, {Key["PolynomialExponents"]}]];
         sd = ProcessSector[specToUse, dualVertices,
                            simplexList[[s]], s, "Verbose" -> verbose,
                            "ImagMonoExps" ->
@@ -5027,7 +5069,7 @@ Module[
    -------------------------------------------------------------------------- *)
 
 ibpImagPole[sectorData_Association, k_Integer, eps_] :=
-Module[{a0k, lmf, lmp, imB, theta},
+Module[{a0k, lmf, lmp, imB, theta, realSyms},
   a0k   = If[eps === None, sectorData["NewExponents"][[k]],
                            sectorData["NewExponents"][[k]] /. eps -> 0];
   theta = Im[a0k];                                  (* Direct / unlifted part *)
@@ -5038,6 +5080,26 @@ Module[{a0k, lmf, lmp, imB, theta},
   If[ListQ[imB] && lmf =!= None,
     theta += Sum[imB[[j]] * lmf["DExp"][[j, k]], {j, Length[lmf["DExp"]]}]];
   If[lmp =!= None, theta += lmp["Num"][[k]]];
+  (* The regulator eps is physically real (e.g. dim-reg eps in d = d0 - 2 eps).
+     When it is an undeclared symbol, Im[...] of an exponent that contains it
+     leaves a spurious Im[eps] term un-simplified: Im(3/2 + I nu - eps) prints
+     as nu - Im[eps] instead of nu, and Im(B_j)/Im(A) stored on the lifted
+     SplitRealImag slots carry the same stray Im[eps].  That term makes theta_k
+     look eps-DEPENDENT, so the off-axis guard (splitdivmono) misfires and refuses
+     a CONSTANT off-axis direction that the IBP route actually supports (the
+     lifted divergent presectors of the 4-point figure; new_request UPDATE
+     2026-06-30, planIBPMULTIDIV/planIBPCX.md §8).  Assume the regulator is real
+     so Im[eps]->0; a genuinely eps-dependent imaginary part (a bare/real eps in
+     the exponent -- the true out-of-scope theta ~ 1/eps) does NOT contain Im[eps]
+     and so survives, still caught by the downstream FreeQ guard.  Refine is exact
+     (no float, invariant #1); theta stays identically 0 on every real / theta=0
+     sector, so PossibleZeroQ and the real-pole Laurent branch are unchanged (#25).
+     Also declare any KinematicSymbols this sector carries real (planR.md R2:
+     a kinematic symbol in an exponent's imaginary part would otherwise leave
+     Re[]/Im[] heads in theta -- same footing as imagPolyInfo/imagMonoInfo). *)
+  realSyms = Lookup[sectorData, "KinematicSymbols", {}];
+  If[eps =!= None, realSyms = Append[realSyms, eps]];
+  If[Length[realSyms] > 0, theta = Refine[theta, Element[realSyms, Reals]]];
   theta
 ];
 
@@ -6373,15 +6435,18 @@ Module[
      and no ImagPolyExponents attached -> the emitted C++ is byte-identical (#25). *)
   cxMode     = OptionValue["ComplexExponentMode"];
   If[cxMode === Automatic, cxMode = "Direct"];
-  imBList    = Im[integrandSpec["PolynomialExponents"]];
+  imBList    = imagPolyInfo[integrandSpec];   (* eps-free Im(B); see imagPolyInfo *)
   hasImagB   = AnyTrue[imBList, (!TrueQ[PossibleZeroQ[#]]) &];
   (* planAXpDIVv2.md §4.1: engage on complex MONOMIAL exponents A too.  See
      imagMonoInfo for the eps->0 / declare-real rationale (planR.md R2,R6). *)
   {imAList, hasImagA} = imagMonoInfo[integrandSpec, eps];
   cxSplit    = isLifted && (cxMode === "SplitRealImag") && (hasImagB || hasImagA);
   specForProc = integrandSpec;
+  (* Re(B) by eps-free subtraction (NOT MapAt[Re]) so a regulator inside B stays a
+     true real for the symbolic-eps Laurent/log-insertion machinery — see
+     realifyPolyB.  IBP keeps eps symbolic (no pinning), so this is exact. *)
   If[cxSplit,
-    specForProc = MapAt[Re, specForProc, {Key["PolynomialExponents"]}]];
+    specForProc = realifyPolyB[specForProc, imBList]];
   (* Subtract the eps-free Im(A) so the real regulator eps in the monomial
      exponent is preserved for the pole machinery (planAXpDIVv2.md §4.2 / see
      realifyMonoA). *)

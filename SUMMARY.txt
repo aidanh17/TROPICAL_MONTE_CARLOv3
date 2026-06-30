@@ -703,6 +703,21 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
           B", cc_47 (C) -- is NO LONGER refused; it is the off-axis case now
           SUPPORTED on the IBP route, above.)
 
+          REGULATOR INSIDE THE EXPONENT (delta = const + i nu - eps) -- SUPPORTED
+          (cc_53, new_request UPDATE 2026-06-30).  The (real) regulator eps may sit
+          in a polynomial exponent B (or monomial A), as in the principal-series
+          propagator power delta = 3/2 + i nu - eps.  The regulator is now assumed
+          REAL wherever B/theta is formed, so Im[delta] = nu - Im[eps] collapses to
+          the physical nu and Re[delta] = 3/2 - Re[eps] keeps eps as a TRUE real.
+          Without this the engine (a) saw the constant off-axis theta_k = nu as
+          spuriously eps-DEPENDENT and refused (splitdivmono misfire), and (b) leaked
+          "(eps).imag()" / "Derivative(Re)" into the emitted C++ (uncompilable).
+          Fix: ibpImagPole refines theta under eps in Reals (the splitdivmono guard
+          reads it); imagPolyInfo gives the eps-free Im(B) for the oscillatory phase;
+          realifyPolyB forms Re(B) by subtracting I*Im(B) (NOT MapAt[Re]).  A
+          genuinely eps-dependent imaginary part still keeps a bare eps and is still
+          refused.  These are the lifted divergent presectors of the 4-point figure.
+
   L3. HasConstantTerm = False -> POSSIBLE INFINITE MC VARIANCE.
       When HasConstantTerm is False after delta-elimination, the lifted integrand
       may not be in L^2 on [0,1]^n.  The sample-based sigma (from finite MC)
@@ -873,3 +888,9 @@ Highest-value checks:
         byte-identical (no .real()), complex-typed takes .real() AND compiles;
         plus the documented scope boundary -- lifted co-located pole+off-axis
         refused cleanly (liftnopivot) [planIBPMULTIDIV.md]
+  cc_53 regulator INSIDE the exponent (delta = const + i nu - eps): assume eps
+        REAL so Im[eps]/Re[eps] do not (A) misfire the off-axis splitdivmono guard
+        nor (B) leak "(eps).imag()"/"Derivative(Re)" into C++.  UNIT: ibpImagPole
+        collapses nu - Im[eps] -> nu (off-axis), genuine 1/eps Im still refused;
+        END-TO-END: lifted divergent with regulator-in-B, IBP Laurent vs NIntegrate
+        [new_request UPDATE 2026-06-30; imagPolyInfo / realifyPolyB / ibpImagPole]
