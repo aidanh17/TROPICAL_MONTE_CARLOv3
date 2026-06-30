@@ -232,8 +232,12 @@ Module[{epsD, esStar = 0.01, dim = 2, polys, pe, Avals, spec, lift, ls, ld, fan,
       ToString[Head[ibp]]]; Return[]];
   poleI = ibp["Results"][[1]]["PoleCoefficient"]; finI = ibp["Results"][[1]]["FinitePart"];
   (* Confirm the fixture REALLY realizes the off-axis condition (planIBPCX.md §9
-     risk #3): at least one divergent sector must carry ImagPole != 0. *)
-  imagPoles = (#["ImagPole"] & /@ ibp["IBPProcessedSectors"]);
+     risk #3): at least one divergent sector must carry an off-axis theta != 0.
+     A single off-axis direction now routes through the generalized corner path
+     (planIBPMULTIDIV.md), which records OffAxisThetas instead of a scalar
+     ImagPole; accept either representation. *)
+  imagPoles = Flatten[(If[TrueQ[#["MultiDiv"]], #["OffAxisThetas"],
+                          {#["ImagPole"]}]) & /@ ibp["IBPProcessedSectors"]];
   ip = AnyTrue[imagPoles, (NumericQ[#] && Abs[#] > 0.01) || (!NumericQ[#] && !TrueQ[PossibleZeroQ[#]]) &];
   Print["   IBP: pole=", N@poleI, "  finite=", N@finI, "   ImagPoles=", imagPoles];
 

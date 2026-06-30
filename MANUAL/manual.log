@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  29 JUN 2026 20:13
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2025) (preloaded format=pdflatex 2025.3.8)  30 JUN 2026 12:43
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -589,7 +589,7 @@ LaTeX Font Info:    Trying to load font information for T1+lmtt on input line 1
 File: t1lmtt.fd 2015/05/01 v1.6.1 Font defs for Latin Modern
 )
 LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <10.95> not available
-(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 69.
+(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 70.
 
 
 
@@ -805,19 +805,6 @@ File: lstlang1.sty 2024/09/23 1.10c listings language file
 (/usr/local/texlive/2025/texmf-dist/tex/latex/listings/lstlang1.sty
 File: lstlang1.sty 2024/09/23 1.10c listings language file
 )
-Underfull \hbox (badness 10000) in paragraph at lines 438--439
-\T1/lmtt/m/n/10.95 {<|"PolyIndex","ExponentVector","Coefficient","Magnitude","S
-uggestedK"|>}
- []
-
-
-Overfull \hbox (132.84415pt too wide) in paragraph at lines 440--441
-[]\T1/lmr/m/n/10.95 Applies lift-ing: each rule is \T1/lmtt/m/n/10.95 <|"PolyIn
-dex"->j,"ExponentVector"->$\OML/lmm/m/it/10.95 $\T1/lmtt/m/n/10.95 ,"k"->k|>\T
-1/lmr/m/n/10.95 .
- []
-
-
 
 
 Package fancyhdr Warning: \headheight is too small (12.0pt): 
@@ -827,31 +814,37 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [14]
-Underfull \hbox (badness 10000) in paragraph at lines 442--443
+Underfull \hbox (badness 10000) in paragraph at lines 440--441
+\T1/lmtt/m/n/10.95 {<|"PolyIndex","ExponentVector","Coefficient","Magnitude","S
+uggestedK"|>}
+ []
+
+
+Overfull \hbox (132.84415pt too wide) in paragraph at lines 442--443
+[]\T1/lmr/m/n/10.95 Applies lift-ing: each rule is \T1/lmtt/m/n/10.95 <|"PolyIn
+dex"->j,"ExponentVector"->$\OML/lmm/m/it/10.95 $\T1/lmtt/m/n/10.95 ,"k"->k|>\T
+1/lmr/m/n/10.95 .
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 444--445
 []\T1/lmr/m/n/10.95 Runs
  []
 
 
-Overfull \hbox (6.65706pt too wide) in paragraph at lines 444--445
+Overfull \hbox (6.65706pt too wide) in paragraph at lines 446--447
 []
  []
 
 
-Underfull \hbox (badness 1360) in paragraph at lines 451--452
+Underfull \hbox (badness 1360) in paragraph at lines 453--454
 []\T1/lmr/m/n/10.95 Constructs $\OML/lmm/m/it/10.95 G[]$\T1/lmr/m/n/10.95 , $\O
 ML/lmm/m/it/10.95 G[]$\T1/lmr/m/n/10.95 , Re-main-der.
  []
 
 
-Underfull \hbox (badness 1769) in paragraph at lines 458--459
+Underfull \hbox (badness 1769) in paragraph at lines 460--461
 []\T1/lmr/m/n/10.95 Symbolic IBP de-com-po-si-tion: iden-ti-fies all di-ver-
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 486--487
-\T1/lmr/m/n/10.95 e-mat-ica heads or \T1/lmtt/m/n/10.95 ComplexInfinity\T1/lmr/
-m/n/10.95 /\T1/lmtt/m/n/10.95 Indeterminate\T1/lmr/m/n/10.95 , \T1/lmtt/m/n/10.
-95 GenerateCpp \T1/lmr/m/n/10.95 re-turns \T1/lmtt/m/n/10.95 $Failed
  []
 
 
@@ -864,7 +857,14 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [15]
-Overfull \hbox (35.46402pt too wide) in paragraph at lines 510--528
+Underfull \hbox (badness 10000) in paragraph at lines 488--489
+\T1/lmr/m/n/10.95 e-mat-ica heads or \T1/lmtt/m/n/10.95 ComplexInfinity\T1/lmr/
+m/n/10.95 /\T1/lmtt/m/n/10.95 Indeterminate\T1/lmr/m/n/10.95 , \T1/lmtt/m/n/10.
+95 GenerateCpp \T1/lmr/m/n/10.95 re-turns \T1/lmtt/m/n/10.95 $Failed
+ []
+
+
+Overfull \hbox (35.46402pt too wide) in paragraph at lines 512--530
  [][] 
  []
 
@@ -878,22 +878,22 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [16]
-Underfull \hbox (badness 10000) in paragraph at lines 546--547
+Underfull \hbox (badness 10000) in paragraph at lines 548--549
 []\T1/lmr/m/n/10.95 Auto-detects/applies lift-ing and routes
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 547--548
+Underfull \hbox (badness 10000) in paragraph at lines 549--550
 []\T1/lmr/m/n/10.95 Forces \T1/lmtt/m/n/10.95 "Method" -> "Subtraction"
  []
 
 
-Overfull \hbox (2.36484pt too wide) in paragraph at lines 548--549
+Overfull \hbox (2.36484pt too wide) in paragraph at lines 550--551
 []\T1/lmr/m/n/10.95 Superseded by \T1/lmtt/m/n/10.95 EvaluateTropicalMC[...,
  []
 
 
-Overfull \hbox (867.2863pt too wide) in paragraph at lines 553--572
+Overfull \hbox (867.2863pt too wide) in paragraph at lines 555--574
  [] 
  []
 
@@ -907,23 +907,23 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [17]
-Overfull \hbox (156.50438pt too wide) in paragraph at lines 580--591
+Overfull \hbox (156.50438pt too wide) in paragraph at lines 582--593
  [] 
  []
 
 
-Overfull \hbox (6.65706pt too wide) in paragraph at lines 597--598
+Overfull \hbox (6.65706pt too wide) in paragraph at lines 599--600
 []
  []
 
 
-Underfull \hbox (badness 7362) in paragraph at lines 599--600
+Underfull \hbox (badness 7362) in paragraph at lines 601--602
 []\T1/lmr/m/n/10.95 IBP for-mula vs. \T1/lmtt/m/n/10.95 NIntegrate\T1/lmr/m/n/1
 0.95 . Re-turns
  []
 
 
-Underfull \hbox (badness 1137) in paragraph at lines 613--614
+Underfull \hbox (badness 1137) in paragraph at lines 615--616
 []$\OMS/lmsy/m/n/10.95 f\OML/lmm/m/it/10.95 P[]; []\OMS/lmsy/m/n/10.95 g$\T1/lm
 r/m/n/10.95 ---symbolic poly-no-mial ex-pres-sions; co-ef-fi-
  []
@@ -938,7 +938,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [18]
-Overfull \hbox (35.00423pt too wide) in paragraph at lines 654--670
+Overfull \hbox (35.00423pt too wide) in paragraph at lines 656--672
  [] 
  []
 
@@ -952,30 +952,30 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [19]
-Overfull \hbox (17.15732pt too wide) in paragraph at lines 697--698
+Overfull \hbox (17.15732pt too wide) in paragraph at lines 699--700
 []\T1/lmtt/m/n/10.95 <|"VariableTerms"->...,"PolynomialTerms"->...|>\T1/lmr/m/n
 /10.95 .| 
  []
 
 
-Overfull \hbox (247.10666pt too wide) in paragraph at lines 698--699
+Overfull \hbox (247.10666pt too wide) in paragraph at lines 700--701
 []\T1/lmtt/m/n/10.95 <|"FullPolys","SimplifiedPolys","Prefactor","DivVarIndex",
 "DivVarExp","Dimension",...|>\T1/lmr/m/n/10.95 .| 
  []
 
 
-Overfull \hbox (185.78725pt too wide) in paragraph at lines 717--718
+Overfull \hbox (185.78725pt too wide) in paragraph at lines 719--720
 []\T1/lmtt/m/n/10.95 <|"FlatPolys","Prefactor","Dimension"(n-1),"PolyExponents"
 ,"LogInsertions"|>\T1/lmr/m/n/10.95 .| 
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 718--719
+Underfull \hbox (badness 10000) in paragraph at lines 720--721
 []\T1/lmr/m/n/10.95 List of term as-so-ci-a-tions, each with:
  []
 
 
-Overfull \hbox (358.24925pt too wide) in paragraph at lines 718--719
+Overfull \hbox (358.24925pt too wide) in paragraph at lines 720--721
 \T1/lmtt/m/n/10.95 "FlatPolys","Prefactor","Dimension"(n),"PolyExponents","Coef
 f0","Coeff1","LogInsertions","Alpha0","Alpha1"\T1/lmr/m/n/10.95 .| 
  []
@@ -991,81 +991,139 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 
 [20]
 LaTeX Font Info:    Font shape `T1/lmtt/bx/n' in size <14.4> not available
-(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 729.
+(Font)              Font shape `T1/lmtt/b/n' tried instead on input line 731.
 
-Underfull \hbox (badness 7344) in paragraph at lines 747--748
+Underfull \hbox (badness 10000) in paragraph at lines 742--743
+[]$\OML/lmm/m/it/10.95 > \OT1/lmr/m/n/10.95 1$ \T1/lmr/m/n/10.95 gen-uine $\OT1
+/lmr/m/n/10.95 1\OML/lmm/m/it/10.95 ="$ \T1/lmr/m/n/10.95 pole (each
+ []
+
+
+Underfull \hbox (badness 2512) in paragraph at lines 742--743
+[]\OT1/lmr/m/n/10.95 (\OML/lmm/m/it/10.95 []\OT1/lmr/m/n/10.95 ) = 0 \OMS/lmsy
+/m/n/10.95 ^ \OML/lmm/m/it/10.95 ^^R \OT1/lmr/m/n/10.95 = 0$\T1/lmr/m/n/10.95 )
+; a real
+ []
+
+
+Underfull \hbox (badness 2512) in paragraph at lines 742--743
+\OT1/lmr/m/n/10.95 1\OML/lmm/m/it/10.95 ="[]$\T1/lmr/m/n/10.95 , re-fused. \T1/
+lmr/bx/n/10.95 [v3, planIBP-
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 742--743
+\T1/lmr/bx/n/10.95 MUL-TI-DIV.md] \T1/lmr/m/n/10.95 Co-located
+ []
+
+
+Underfull \hbox (badness 1173) in paragraph at lines 742--743
+\T1/lmr/m/it/10.95 off-axis \T1/lmr/m/n/10.95 di-rec-tions ($\OML/lmm/m/it/10.9
+5 ^^R \OMS/lmsy/m/n/10.95 6\OT1/lmr/m/n/10.95 = 0$\T1/lmr/m/n/10.95 ) are fi-
+ []
+
+
+Underfull \hbox (badness 6173) in paragraph at lines 742--743
+\T1/lmr/m/n/10.95 nite and no longer counted---one
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 742--743
+\T1/lmr/m/n/10.95 pole $\OT1/lmr/m/n/10.95 + \OML/lmm/m/it/10.95 N$ \T1/lmr/m/n
+/10.95 off-axis is sup-ported
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 742--743
+\T1/lmr/m/n/10.95 (\T1/lmtt/m/n/10.95 ibpDivClass\T1/lmr/m/n/10.95 /\T1/lmtt/m/
+n/10.95 IBPBuildCorners\T1/lmr/m/n/10.95 ;
+ []
+
+
+Underfull \hbox (badness 7344) in paragraph at lines 749--750
 []\T1/lmr/m/n/10.95 Complex $[]$ has no real do-main
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 747--748
+Underfull \hbox (badness 10000) in paragraph at lines 749--750
 \T1/lmr/m/n/10.95 in-di-ca-tor (\T1/lmtt/m/n/10.95 Direct \T1/lmr/m/n/10.95 mod
 e); use
  []
 
 
-Overfull \hbox (22.0115pt too wide) in paragraph at lines 747--748
+Overfull \hbox (22.0115pt too wide) in paragraph at lines 749--750
 \T1/lmtt/m/n/10.95 ComplexExponentMode->"SplitRealImag"
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 748--749
+Underfull \hbox (badness 10000) in paragraph at lines 750--751
 []\T1/lmr/m/n/10.95 (Convergent-lift back-stop) se-lected
  []
 
 
-Underfull \hbox (badness 1596) in paragraph at lines 748--749
+Underfull \hbox (badness 1596) in paragraph at lines 750--751
 \T1/lmr/m/n/10.95 pivot leaves $[]\OT1/lmr/m/n/10.95 ([]) \OMS/lmsy/m/n/10.95 ^
 ^T \OT1/lmr/m/n/10.95 0$ \T1/lmr/m/n/10.95 with no
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 750--751
+Underfull \hbox (badness 10000) in paragraph at lines 752--753
 []\T1/lmr/bx/n/10.95 [v3 new]
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 750--751
+Underfull \hbox (badness 10000) in paragraph at lines 752--753
 \T1/lmtt/m/n/10.95 SplitRealImag$\OMS/lmsy/m/n/10.95 ^^B$\T1/lmr/m/n/10.95 lift
 $\OMS/lmsy/m/n/10.95 ^^B$\T1/lmr/m/n/10.95 divergence on
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 750--751
+Underfull \hbox (badness 10000) in paragraph at lines 752--753
 \T1/lmr/m/n/10.95 (\T1/lmtt/m/n/10.95 Method->"None"/"Subtraction"\T1/lmr/m/n/1
 0.95 );
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 750--751
+Underfull \hbox (badness 10000) in paragraph at lines 752--753
 \T1/lmr/m/n/10.95 use \T1/lmtt/m/n/10.95 Method->Automatic/"IBP" \T1/lmr/m/n/10
 .95 or
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 750--751
+Underfull \hbox (badness 10000) in paragraph at lines 752--753
 \T1/lmr/m/n/10.95 pinned-$\OML/lmm/m/it/10.95 "$ \T1/lmtt/m/n/10.95 LaurentFrom
 Subtraction
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 750--751
+Underfull \hbox (badness 10000) in paragraph at lines 752--753
 \T1/lmr/m/n/10.95 (both sup-ported, planCXLIFT-
  []
 
 
-Underfull \hbox (badness 1997) in paragraph at lines 752--753
+Underfull \hbox (badness 1418) in paragraph at lines 754--755
+\T1/lmr/m/n/10.95 A \T1/lmr/m/it/10.95 power\T1/lmr/m/n/10.95 -divergent off-ax
+is di-rec-tion
+ []
+
+
+Underfull \hbox (badness 2922) in paragraph at lines 755--756
+\T1/lmr/m/n/10.95 A term re-tains a gen-uine on-axis
+ []
+
+
+Underfull \hbox (badness 1997) in paragraph at lines 756--757
 []\T1/lmr/m/n/10.95 Fan in lifted mode is not $\OT1/lmr/m/n/10.95 (\OML/lmm/m/i
 t/10.95 n[]\OT1/lmr/m/n/10.95 1)$\T1/lmr/m/n/10.95 -
  []
 
 
-Underfull \hbox (badness 5302) in paragraph at lines 753--754
+Underfull \hbox (badness 5302) in paragraph at lines 757--758
 []\T1/lmr/m/n/10.95 Lifted New-ton poly-tope is lower-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 753--754
+Underfull \hbox (badness 10000) in paragraph at lines 757--758
 \T1/lmr/m/n/10.95 dimensional; sup-ply ex-plicit
  []
 
@@ -1079,7 +1137,7 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [21]
-Overfull \vbox (97.61858pt too high) has occurred while \output is active []
+Overfull \vbox (369.61867pt too high) has occurred while \output is active []
 
 
 
@@ -1100,26 +1158,26 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [23]
-Overfull \hbox (3.807pt too wide) in paragraph at lines 776--778
+Overfull \hbox (3.807pt too wide) in paragraph at lines 780--782
 []\T1/lmr/bx/n/10.95 High-D VE-GAS er-ror bars can lie. \T1/lmr/m/n/10.95 VE-GA
 S de-faults (\T1/lmtt/m/n/10.95 NStart=1000, NIncrease=500,
  []
 
 
-Overfull \hbox (27.2394pt too wide) in paragraph at lines 776--778
+Overfull \hbox (27.2394pt too wide) in paragraph at lines 780--782
 \T1/lmtt/m/n/10.95 NBatch=1000\T1/lmr/m/n/10.95 ) pro-duce con-fi-dently wrong 
 val-ues for sec-tor di-men-sion $\U/msa/m/n/10.95 & \OT1/lmr/m/n/10.95 6$\T1/lm
 r/m/n/10.95 . \T1/lmtt/m/n/10.95 resolveVegasSizing
  []
 
 
-Overfull \hbox (4.03336pt too wide) in paragraph at lines 782--784
+Overfull \hbox (4.03336pt too wide) in paragraph at lines 786--788
 []\T1/lmr/bx/n/10.95 Kinematic-symbol co-ef-fi-cients can-not be auto-lifted. \
 T1/lmtt/m/n/10.95 DetectExtremeCoefficients
  []
 
 
-Underfull \hbox (badness 1270) in paragraph at lines 794--796
+Underfull \hbox (badness 1270) in paragraph at lines 798--800
 []\T1/lmr/bx/n/10.95 FIESTA cross-checks re-quire FI-ESTA and path ed-its. \T1/
 lmr/m/n/10.95 The \T1/lmtt/m/n/10.95 CC/ \T1/lmr/m/n/10.95 scripts
  []
@@ -1161,19 +1219,19 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [27]
-Overfull \hbox (304.47583pt too wide) in paragraph at lines 1017--1018
+Overfull \hbox (304.47583pt too wide) in paragraph at lines 1021--1022
 []\T1/lmr/m/n/10.95 Known-limitation en-force-ment: \T1/lmtt/m/n/10.95 nested/n
 estedIBP/nocuba/badcpp/liftnopivot/liftcomplex/liftdegenerate/vegasbudget
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1020--1021
+Underfull \hbox (badness 10000) in paragraph at lines 1024--1025
 []\T1/lmr/m/n/10.95 Divergence $\OMS/lmsy/m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 com-
 plex ex-po-nents, full ma-trix: $\OMS/lmsy/m/n/10.95 f$\T1/lmr/m/n/10.95 IBP,
  []
 
 
-Underfull \hbox (badness 1424) in paragraph at lines 1028--1029
+Underfull \hbox (badness 1424) in paragraph at lines 1032--1033
 []\T1/lmr/m/n/10.95 Complex-\T1/lmr/m/it/10.95 monomial\T1/lmr/m/n/10.95 -$\OML
 /lmm/m/it/10.95 A$ $\OMS/lmsy/m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 lift $\OMS/lmsy/
 m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 di-ver-gence (\T1/lmtt/m/n/10.95 SplitRealImag
@@ -1181,14 +1239,14 @@ m/n/10.95 ^^B$ \T1/lmr/m/n/10.95 di-ver-gence (\T1/lmtt/m/n/10.95 SplitRealImag
  []
 
 
-Underfull \hbox (badness 5771) in paragraph at lines 1029--1030
+Underfull \hbox (badness 5771) in paragraph at lines 1033--1034
 []\T1/lmr/m/n/10.95 Complex ex-po-nents $\OMS/lmsy/m/n/10.95 ^^B$ \T1/lmr/m/n/1
 0.95 di-ver-gence, \T1/lmr/m/it/10.95 un-lifted\T1/lmr/m/n/10.95 : monomial-$\O
 ML/lmm/m/it/10.95 A$
  []
 
 
-Underfull \hbox (badness 1122) in paragraph at lines 1029--1030
+Underfull \hbox (badness 1122) in paragraph at lines 1033--1034
 \T1/lmr/m/n/10.95 and polynomial-$\OML/lmm/m/it/10.95 B$\T1/lmr/m/n/10.95 , \T1
 /lmtt/m/n/10.95 Direct$\OT1/lmr/m/n/10.95 =$\T1/lmtt/m/n/10.95 SplitRealImag$\O
 T1/lmr/m/n/10.95 =$\T1/lmr/m/n/10.95 exact $\OT1/lmr/m/n/10.95 ^^@$\T1/lmr/m/n/
@@ -1226,13 +1284,13 @@ Package fancyhdr Warning: \headheight is too small (12.0pt):
 (fancyhdr)                \addtolength{\topmargin}{-1.59999pt}.
 
 [30]
-Underfull \hbox (badness 1331) in paragraph at lines 1077--1078
+Underfull \hbox (badness 1331) in paragraph at lines 1081--1082
 []\T1/lmr/m/n/10.95 C++17 re-quired (\T1/lmtt/m/n/10.95 -std=c++17\T1/lmr/m/n/1
 0.95 ). OpenMP rec-om-mended
  []
 
 
-Underfull \hbox (badness 2538) in paragraph at lines 1079--1080
+Underfull \hbox (badness 2538) in paragraph at lines 1083--1084
 []\T1/lmr/m/n/10.95 ([][]$\T1/lmtt/m/n/10.95 https : / / feynarts . de / cuba/$
 [][]\T1/lmr/m/n/10.95 ) Re-quired only for \T1/lmtt/m/n/10.95 "Integrator" ->
  []
@@ -1271,7 +1329,7 @@ Package rerunfilecheck Info: File `manual.out' has not changed.
 Here is how much of TeX's memory you used:
  21983 strings out of 473190
  364545 string characters out of 5715801
- 2245879 words of memory out of 5000000
+ 2245889 words of memory out of 5000000
  44665 multiletter control sequences out of 15000+600000
  652900 words of font info for 102 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
@@ -1296,7 +1354,7 @@ st/fonts/type1/public/lm/lmtk10.pfb></usr/local/texlive/2025/texmf-dist/fonts/t
 ype1/public/lm/lmtt10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/publi
 c/amsfonts/symbols/msam10.pfb></usr/local/texlive/2025/texmf-dist/fonts/type1/p
 ublic/amsfonts/symbols/msbm10.pfb>
-Output written on manual.pdf (32 pages, 546178 bytes).
+Output written on manual.pdf (32 pages, 549530 bytes).
 PDF statistics:
  960 PDF objects out of 1000 (max. 8388607)
  862 compressed objects within 9 object streams

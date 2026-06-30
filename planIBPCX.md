@@ -441,9 +441,18 @@ the genuine-complex-pole (`θ=0`) case strengthened to a 4-way Subtraction↔IBP
 `LaurentFromSubtraction`↔NIntegrate check; IBP integration **batched over kinematics**
 (shared-grid Vegas), preserving the per-kp output contract and combine.
 
+**Now also implemented (planIBPMULTIDIV.md):**
+- The mixed case "one real pole + N off-axis directions" in the same cone is **no longer
+  refused** (UNLIFTED): `ibpDivClass` counts only genuine poles toward `nestedIBP`, and the
+  full `2^(N+1)`-corner iterated IBP (`IBPBuildCorners`) assembles it. Verified vs the
+  closed-form Dirichlet oracle for `N=1` (cc_51) and `N=2`. The driver multiplies the
+  per-corner sum by `[1/(c_k ε)]·∏_j[1/(iθ_j)]` (still orders −1, 0 only — no `1/ε²`).
+
 **Still refused / out of scope (clean `$Failed`, future work):**
-- Nested / higher-order poles (`>1` divergent variable), including the mixed case "one real
-  pole + one off-axis direction" (`nestedIBP` counts both; §3.5).
+- `>1` GENUINE pole (each `Re=0 ∧ θ=0`): a real `1/ε^{d≥2}` (`nestedIBP`).
+- The LIFTED co-located "one pole + off-axis" case: `ProcessSectorLifted`'s pivot admittance
+  counts realified `Re≤0` directions (not poles), so it refuses such a pivot
+  (`liftnopivot`); the off-axis-aware lifted pivot admittance is future work (cc_52 (B)).
 - Geometric Case B — divergent variable couples to the lifted domain face (`liftdivdomain`).
 - Inline symbolic-ε Subtraction with lift+complex (`splitliftdiv`) and the pinned-ε route
   for θ≠0 — genuinely fail (fast oscillation); IBP is the supported route.

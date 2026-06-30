@@ -214,6 +214,8 @@ TropicalEval::liftfandim = "EvaluateTropicalMC with LiftData: the fan dimension 
 TropicalEval::liftdegenerate = "EvaluateTropicalMCLifted: the lifted Newton polytope is lower-dimensional; automatic fan construction is not possible — supply an explicit complete simplicial fan via the \"FanData\" option.";
 TropicalEval::liftdivdomain = "ProcessSectorLifted: cone `1` — the divergent variable couples to the lifted domain constraint (ic_k != 0) for every admissible pivot.  The 1/eps pole and the domain face interact (Case B, planAXpDIV.md §3); a log-space remap is required (future work).  Aborting ($Failed).";
 TropicalEval::splitdivmono = "IBPProcessSector: cone `1` — the divergent direction's imaginary exponent theta_k = `2` is eps-DEPENDENT (it scales with the regulator).  A constant theta_k is fine — it is the off-axis case the IBP route now supports (s_k = c_k eps + i theta_k is regular at eps=0; planIBPCX.md §1/§3).  But an eps-dependent theta_k ~ 1/eps reintroduces the fast oscillation the bounded IBP integrand relies on being O(theta), so it cannot be resolved.  The supported case is the standard real-eps regulator with eps-free Im(B)/Im(A) (planIBPCX.md §8).  Aborting ($Failed) rather than emitting a wrong value.";
+TropicalEval::ibpresidual = "IBPProcessSector: cone `1` — term `2` retains a genuine (on-axis, theta=0) divergence in y_`3` (alpha0 = `4`) after IBP reduction.  This is an unreduced residual / higher-order pole the numerical path does not assemble.  Aborting ($Failed).";
+TropicalEval::offaxispow = "IBPProcessSector: cone `1` — divergent direction y_`2` is power-divergent off-axis (Re(alpha0) < 0 with theta != 0); a single IBP step does not raise it to Re > 0 (planIBPMULTIDIV.md §3.1).  The supported off-axis case is logarithmic (Re(alpha0) = 0).  Aborting ($Failed) rather than emitting a divergent integrand.";
 TropicalEval::splitliftdiv = "EvaluateTropicalMC: SplitRealImag x lifting x divergence is supported only on the IBP route (Method -> Automatic / \"IBP\") and the pinned-eps Subtraction route (LaurentFromSubtraction); the symbolic-eps inline Subtraction path (Method -> \"None\"/\"Subtraction\") does not re-derive the per-piece oscillatory phase (planCXLIFTDIV.md C1).  Use Method -> Automatic (default) or LaurentFromSubtraction for lifted+divergent complex-exponent integrals.";
 
 (* ---- High-D VEGAS sizing guard (lift_error_log L1, plan.md §6.5) ---- *)
@@ -2362,7 +2364,7 @@ realifyMonoA[spec_, imA_] := MapAt[# - I*imA &, spec, {Key["MonomialExponents"]}
    The emitted bytes are identical to the previous inline block. *)
 emitDomainIndicatorCpp[None, _] := "";
 emitDomainIndicatorCpp[dc_Association, paramMap_Association] :=
-Module[{logZ0str, mpStr, icList, icTerms, sumStr},
+Module[{logZ0str, mpStr, icList, icTerms, sumStr, rhs, isCx},
   logZ0str = mmaToCInternal[N[dc["LogZ0"]], paramMap];
   mpStr    = mmaToCInternal[N[dc["MP"]], paramMap];
   icList   = N[dc["IndicatorCoeffs"]];
@@ -2372,9 +2374,20 @@ Module[{logZ0str, mpStr, icList, icTerms, sumStr},
     {i, Length[icList]}
   ];
   sumStr = If[Length[icTerms] == 0, "0.0", StringRiffle[icTerms, " + "]];
+  rhs = "(" <> logZ0str <> " - (" <> sumStr <> ")) * (1.0/" <> mpStr <> ")";
+  (* Complex-typing fix (planIBPMULTIDIV.md §3.5).  The SplitRealImag domain map
+     is built from Re(A)/Re(B), so the indicator is provably REAL — but a
+     machine-zero imaginary (Complex[x,0.], the kind realifyMonoA warns about) in
+     LogZ0/MP/IndicatorCoeffs makes mmaToCInternal emit cx(...), so the assembled
+     RHS is complex-typed and `double log_ypstar = (...)` would fail to compile.
+     Take .real() (discarding only the machine-zero noise) ONLY when a cx(...)
+     literal is actually present; the real-typed path is byte-identical (#25),
+     and a real symbolic kinematic expression (no cx) is left untouched. *)
+  isCx = StringContainsQ[logZ0str, "cx("] || StringContainsQ[mpStr, "cx("] ||
+         StringContainsQ[sumStr, "cx("];
   "    // lifted-sector domain indicator\n" <>
-  "    double log_ypstar = (" <> logZ0str <>
-    " - (" <> sumStr <> ")) * (1.0/" <> mpStr <> ");\n" <>
+  "    double log_ypstar = " <>
+    If[isCx, "(" <> rhs <> ").real()", rhs] <> ";\n" <>
   "    if (log_ypstar > 0.0) return cx(0.0, 0.0);\n\n"
 ];
 
@@ -2767,9 +2780,73 @@ Module[
     Do[
       Module[{ibpSD, bndData, ibpTerms, sIdx, sectorFuncs},
         ibpSD    = ibpSectors[[s]];
+        sIdx     = s - 1;
+
+      If[TrueQ[ibpSD["MultiDiv"]],
+        (* ===== MultiDiv corner path (planIBPMULTIDIV.md §3.3) =====
+           One base + one log integrand per corner piece; the func map carries
+           the per-piece Sign / Coeff0 / Coeff1 the driver combines. *)
+        Module[{corners, mSectorFuncs},
+          corners = ibpSD["Corners"];
+          mSectorFuncs = <|"SectorIndex" -> sIdx,
+                           "ConeIndex" -> ibpSD["ConeIndex"],
+                           "MultiDiv" -> True, "Pieces" -> {}|>;
+          Do[
+            Module[{piece, cIdx, logIns, funcBase, funcLog},
+              piece  = corners[[c]];
+              cIdx   = c - 1;
+              logIns = piece["LogInsertions"];
+              funcBase = emitBaseFuncBody[
+                "integrand_ibp_" <> ToString[sIdx] <> "_c" <> ToString[cIdx] <>
+                  "_base",
+                "IBP corner " <> ToString[cIdx] <> " base, sector " <>
+                  ToString[ibpSD["ConeIndex"]],
+                "result",
+                piece["FlatPolys"], piece["PolyExponents"],
+                piece["Prefactor"], piece["Dimension"], paramMap,
+                piece["DomainConstraint"],
+                piece["MonoFactorLog"],
+                Lookup[ibpSD, "ImagPolyExponents", None],
+                piece["MonomialPhaseLog"]];
+              funcBase = funcBase <> "    return result;\n}\n";
+              AppendTo[integrandFuncs, funcBase];
+              AppendTo[integrandDims, piece["Dimension"]];
+              AppendTo[integrandTypes, "ibp"];
+
+              funcLog = emitBaseFuncBody[
+                "integrand_ibp_" <> ToString[sIdx] <> "_c" <> ToString[cIdx] <>
+                  "_log",
+                "IBP corner " <> ToString[cIdx] <> " log, sector " <>
+                  ToString[ibpSD["ConeIndex"]],
+                "base_val",
+                piece["FlatPolys"], piece["PolyExponents"],
+                piece["Prefactor"], piece["Dimension"], paramMap,
+                piece["DomainConstraint"],
+                piece["MonoFactorLog"],
+                Lookup[ibpSD, "ImagPolyExponents", None],
+                piece["MonomialPhaseLog"]];
+              funcLog = funcLog <>
+                emitLogTail[logIns["VariableTerms"], logIns["PolynomialTerms"],
+                            paramMap, True];
+              funcLog = funcLog <> "\n    return base_val * log_sum;\n}\n";
+              AppendTo[integrandFuncs, funcLog];
+              AppendTo[integrandDims, piece["Dimension"]];
+              AppendTo[integrandTypes, "ibp"];
+
+              AppendTo[mSectorFuncs["Pieces"], <|
+                "BaseFuncId" -> Length[integrandFuncs] - 2,
+                "LogFuncId"  -> Length[integrandFuncs] - 1,
+                "Sign"       -> piece["Sign"],
+                "Coeff0"     -> piece["Coeff0"],
+                "Coeff1"     -> piece["Coeff1"]|>];
+              nIBPFuncs += 2;
+            ],
+            {c, Length[corners]}];
+          AppendTo[ibpFuncMap, mSectorFuncs];
+        ]
+      , (* ===== existing single-pole boundary + terms path ===== *)
         bndData  = ibpSD["BoundaryData"];
         ibpTerms = ibpSD["IBPTerms"];
-        sIdx     = s - 1;
         sectorFuncs = <|"SectorIndex" -> sIdx,
                         "ConeIndex" -> ibpSD["ConeIndex"]|>;
 
@@ -2883,6 +2960,7 @@ Module[
         ];
 
         AppendTo[ibpFuncMap, sectorFuncs];
+      ] (* end If MultiDiv / single-pole *)
       ],
       {s, Length[ibpSectors]}
     ];
@@ -4963,6 +5041,41 @@ Module[{a0k, lmf, lmp, imB, theta},
 ];
 
 (* --------------------------------------------------------------------------
+   ibpDivClass  (planIBPMULTIDIV.md §3.1)
+   Classify divergent direction i of a sector by (Re(alpha0), theta):
+     "Convergent" : Re(alpha0) > 0                  (not divergent at all)
+     "Pole"       : Re(alpha0) <= 0 AND theta == 0  (a genuine 1/eps pole)
+     "OffAxis"    : Re(alpha0) <= 0 AND theta != 0  (finite, 1/(i theta))
+   Decided SYMBOLICALLY (PossibleZeroQ on the exact ibpImagPole, before any
+   kinRules), so it makes no float decision in the decomposition (invariant #1;
+   mirrors planIBPCX.md §3.4).  theta == 0 on every real / Case-A sector ->
+   "Pole"/"Convergent" only -> the off-axis code paths never activate ->
+   byte/numerically identical (#25).
+   -------------------------------------------------------------------------- *)
+ibpDivClass[sectorData_Association, i_Integer, eps_] :=
+Module[{a0i, th},
+  a0i = If[eps === None, sectorData["NewExponents"][[i]],
+                         sectorData["NewExponents"][[i]] /. eps -> 0];
+  th  = ibpImagPole[sectorData, i, eps];
+  Which[
+    ! (TrueQ[Re[a0i] <= 0] || (NumericQ[a0i] && Re[a0i] <= 0)), "Convergent",
+    TrueQ[PossibleZeroQ[th]],                                   "Pole",
+    True,                                                       "OffAxis"]
+];
+
+(* dropVarsFromDomain (planIBPMULTIDIV.md §3.3): a corner piece runs over the
+   surviving (live) coordinates only; the lifted-sector domain indicator must be
+   restricted to those coordinates.  In Case A ic = 0 on every divergent slot
+   (ProcessSectorLifted sets IndicatorCoeffs[[divDir]] = 0), so this just selects
+   the live entries.  None for unlifted -> None (byte-identical #25). *)
+dropVarsFromDomain[None, _] := None;
+dropVarsFromDomain[dc_Association, liveVars_List] := <|
+  "LogZ0"           -> dc["LogZ0"],
+  "MP"              -> dc["MP"],
+  "IndicatorCoeffs" -> dc["IndicatorCoeffs"][[liveVars]]
+|>;
+
+(* --------------------------------------------------------------------------
    IBPReduceSector
    Main IBP reduction function.  Iteratively applies IBP to resolve all
    divergent variables in a sector.
@@ -5111,6 +5224,292 @@ Module[
 ];
 
 (* --------------------------------------------------------------------------
+   ibpProcessLeaf  (planIBPMULTIDIV.md §3.3)
+   Turn one corner LEAF (a single term over its live coordinates) into the
+   processed, flattened integrand piece the codegen consumes.  This is exactly
+   the per-term processing of IBPProcessSector Step 3 (and reproduces the Step 2
+   boundary data when the leaf is the all-boundary corner), generalized to an
+   arbitrary live-coordinate subset.
+   -------------------------------------------------------------------------- *)
+ibpProcessLeaf[node_Association, eps_, pfBase_, lmf_, lmp_, nPolys_Integer,
+               nPolyExps_Integer, domC_] :=
+Module[{liveVars, cp, exps, polyExps, coeff, alpha0, alpha1,
+        flatPolys, prefactor, tB0, tB1, coeff0, coeff1, logInsertions,
+        monoFactorLog, monoPhaseLog, nlive},
+  liveVars = node["Live"];
+  nlive    = Length[liveVars];
+  cp       = node["ClearedPolys"];
+  exps     = node["Exps"];
+  polyExps = node["PolyExps"];
+  coeff    = node["Coeff"];
+
+  alpha0 = (exps /. eps -> 0)[[liveVars]];
+  alpha1 = (D[exps, eps] /. eps -> 0)[[liveVars]];
+
+  (* Flatten: keep only the live coordinates, divide each by its alpha0. *)
+  flatPolys = Table[
+    Table[{mono[[1]], MapThread[#1/#2 &, {mono[[2]][[liveVars]], alpha0}]},
+          {mono, cp[[j]]}],
+    {j, nPolys}];
+
+  prefactor = (pfBase /. eps -> 0) / (Times @@ alpha0);
+
+  tB0 = polyExps /. eps -> 0;
+  tB1 = D[polyExps, eps] /. eps -> 0;
+  coeff0 = coeff /. eps -> 0;
+  coeff1 = D[coeff, eps] /. eps -> 0;
+
+  logInsertions = <|
+    "VariableTerms"   -> Table[{alpha1[[i]] / alpha0[[i]], i}, {i, nlive}],
+    "PolynomialTerms" -> Table[{tB1[[j]], j}, {j, nPolyExps}]|>;
+
+  monoFactorLog = If[lmf === None, None,
+    Table[<|"Const"  -> lmf["Const"][[j]],
+            "Coeffs" -> Table[lmf["DExp"][[j, liveVars[[i]]]] / alpha0[[i]],
+                              {i, nlive}]|>,
+          {j, nPolys}]];
+  monoPhaseLog = If[lmp === None, None,
+    <|"Const"  -> lmp["Const"],
+      "Coeffs" -> Table[lmp["Num"][[liveVars[[i]]]] / alpha0[[i]], {i, nlive}]|>];
+
+  <|"Sign"            -> node["Sign"],
+    "FlatPolys"       -> flatPolys,
+    "Prefactor"       -> prefactor,
+    "Dimension"       -> nlive,
+    "PolyExponents"   -> tB0,
+    "Coeff0"          -> coeff0,
+    "Coeff1"          -> coeff1,
+    "LogInsertions"   -> logInsertions,
+    "MonoFactorLog"   -> monoFactorLog,
+    "MonomialPhaseLog"-> monoPhaseLog,
+    "DomainConstraint"-> dropVarsFromDomain[domC, liveVars],
+    "LiveVars"        -> liveVars,
+    "Alpha0"          -> alpha0|>
+];
+
+(* --------------------------------------------------------------------------
+   IBPBuildCorners  (planIBPMULTIDIV.md §3.3 — the one-pole + N-off-axis core)
+   Iterated IBP over the full divergent set D = {pole k, off-axis m_1..m_N}.
+   Each divergent direction is peeled into a BOUNDARY choice (y_d = 1, drop the
+   coordinate, sign +) or a BULK choice (raise alpha_d via IBPExpandOneVariable,
+   sign -); the 2^|D| leaves are the corners.  The global prefactor
+   prod_d (1/a_d) is factored OUT (assembled in the driver), so a corner carries
+   only its sign and its convergent flattened integrand.  This is the strict
+   generalization of the single-direction Step 2 (boundary) + Step 3 (terms):
+   for |D| = 1 it produces exactly {boundary (sign +), bulk terms (sign -)}.
+
+   Returns {corners, $Failed-or-Null}: corners is the processed piece list;
+   the second value is a direction index if a power-divergent residual (a live
+   coordinate still Re(alpha0) <= 0 after one raise — the §3.1 edge) survived,
+   else Null.
+   -------------------------------------------------------------------------- *)
+IBPBuildCorners[sectorData_Association, eps_, pfBase_, lmf_, lmp_, imB_List,
+                divVars_List, domC_] :=
+Module[{n, aVals, polyExps, clearedPolys, nPolys, nPolyExps, nodes, leaves,
+        corners, badDir = Null},
+  n            = sectorData["Dimension"];
+  aVals        = sectorData["NewExponents"];
+  polyExps     = sectorData["PolynomialExponents"];
+  clearedPolys = sectorData["ClearedPolys"];
+  nPolys       = Length[clearedPolys];
+  nPolyExps    = Length[polyExps];
+
+  (* Seed: the original single integrand term over all n coordinates. *)
+  nodes = {<|"Coeff" -> 1, "Exps" -> aVals, "PolyExps" -> polyExps,
+             "ClearedPolys" -> clearedPolys, "Dead" -> {}, "Sign" -> 1|>};
+
+  (* Peel each divergent direction in turn. *)
+  Do[
+    Module[{d = divVars[[dv]], next = {}},
+      Do[
+        Module[{node = nodes[[ni]], bndCP, bulkTerms},
+          (* --- BOUNDARY corner: set y_d = 1 (zero the d-th monomial exponent,
+                 mark d dead), sign unchanged (+). --- *)
+          bndCP = Table[
+            Table[{mono[[1]], ReplacePart[mono[[2]], d -> 0]},
+                  {mono, node["ClearedPolys"][[j]]}],
+            {j, nPolys}];
+          AppendTo[next, <|
+            "Coeff" -> node["Coeff"], "Exps" -> node["Exps"],
+            "PolyExps" -> node["PolyExps"], "ClearedPolys" -> bndCP,
+            "Dead" -> Append[node["Dead"], d], "Sign" -> node["Sign"]|>];
+
+          (* --- BULK corner: IBP-expand y_d (raise alpha_d, bring down the poly
+                 log), sign flipped (-).  Multiple monomial terms. --- *)
+          bulkTerms = IBPExpandOneVariable[
+            <|"Coefficient" -> node["Coeff"], "NewExponents" -> node["Exps"],
+              "PolyExponents" -> node["PolyExps"]|>,
+            d, node["ClearedPolys"], eps, imB];
+          Do[
+            AppendTo[next, <|
+              "Coeff" -> bt["Coefficient"], "Exps" -> bt["NewExponents"],
+              "PolyExps" -> bt["PolyExponents"],
+              "ClearedPolys" -> node["ClearedPolys"],
+              "Dead" -> node["Dead"], "Sign" -> -node["Sign"]|>],
+            {bt, bulkTerms}];
+        ],
+        {ni, Length[nodes]}];
+      nodes = next;
+    ],
+    {dv, Length[divVars]}];
+
+  (* Finalize leaves: live coords + verify convergence (§3.1 / §3.4). *)
+  leaves = Table[
+    Append[node, "Live" -> Complement[Range[n], node["Dead"]]],
+    {node, nodes}];
+
+  Do[
+    Module[{a0 = (leaf["Exps"] /. eps -> 0)[[leaf["Live"]]]},
+      Do[
+        If[TrueQ[Re[a0[[i]]] <= 0] || (NumericQ[a0[[i]]] && Re[a0[[i]]] <= 0),
+          badDir = leaf["Live"][[i]]],
+        {i, Length[a0]}]],
+    {leaf, leaves}];
+
+  If[badDir =!= Null, Return[{$Failed, badDir}]];
+
+  corners = Table[
+    ibpProcessLeaf[leaf, eps, pfBase, lmf, lmp, nPolys, nPolyExps, domC],
+    {leaf, leaves}];
+
+  {corners, Null}
+];
+
+(* --------------------------------------------------------------------------
+   IBPProcessSectorMultiDiv  (planIBPMULTIDIV.md §3.3)
+   The one-pole + N-off-axis (or N-off-axis, no pole) processing path.  Builds
+   the 2^|D| iterated-IBP corners (IBPBuildCorners) and carries the global
+   prefactor data the driver needs to assemble:
+       I = [1/(c_k eps)] * prod_j[1/(i theta_j)] * sum_corners (sign) L_corner
+   The pole's 1/(c_k eps) is the only eps-singular factor; the off-axis
+   prod_j 1/(i theta_j) is a finite constant -> Laurent orders -1 and 0 only.
+   -------------------------------------------------------------------------- *)
+IBPProcessSectorMultiDiv[sectorData_Association, integrandSpec_Association,
+                         poleDirs_List, offDirs_List] :=
+Module[
+  {eps, n, detM, pfBase, lmf, lmp, imB, domC, aVals, divVars,
+   cornersResult, corners, badDir, k, ck, rk, dlog, offThetas, offCks, offRks,
+   hasPole},
+
+  eps     = integrandSpec["RegulatorSymbol"];
+  n       = sectorData["Dimension"];
+  detM    = sectorData["DetM"];
+  pfBase  = Lookup[sectorData, "PrefactorBase", Abs[detM]];
+  lmf     = Lookup[sectorData, "LiftedMonoFactor", None];
+  lmp     = Lookup[sectorData, "LiftedMonoPhase",  None];
+  imB     = Lookup[sectorData, "ImagPolyExponents", None];
+  If[imB === None, imB = {}];
+  domC    = Lookup[sectorData, "DomainConstraint", None];
+  aVals   = sectorData["NewExponents"];
+  hasPole = Length[poleDirs] >= 1;
+
+  (* Peel the pole first (if present), then the off-axis directions. *)
+  divVars = Join[poleDirs, offDirs];
+
+  (* A genuine pole with c_k = 0 (and theta_k = 0 by construction) is an
+     unregulated higher-order log pole — refuse (badck).  Off-axis directions
+     are exempt: theta != 0 regulates the y=0 endpoint without eps. *)
+  If[hasPole,
+    k = poleDirs[[1]];
+    Module[{ckk = D[aVals[[k]], eps] /. eps -> 0},
+      If[TrueQ[ckk == 0] || (NumericQ[ckk] && ckk == 0),
+        Message[TropicalEval::badck, sectorData["ConeIndex"], k];
+        Return[$Failed]]]
+  ];
+
+  (* Every divergent direction must be a LOGARITHMIC endpoint, Re(alpha0)=0: the
+     pole 1/(c_k eps) and each off-axis 1/(i theta_j) are residues of a Re=0
+     endpoint.  A strictly power-divergent direction (Re(alpha0)<0) is genuinely
+     divergent — the oscillation does NOT regulate a magnitude divergence
+     (|y^{rho-1+i theta}| = y^{rho-1} still blows up at y->0 for rho<0) and IBP's
+     y=0 boundary term does not vanish — so its raised-integrand "finite" value
+     would be a WRONG number.  Refuse cleanly (planIBPMULTIDIV.md §3.1): off-axis
+     -> offaxispow; a Re<0 "pole" (theta=0) is a higher-order residual ->
+     ibpresidual.  (After this guard every divergent direction has Re(alpha0)=0,
+     so one IBP raise by an integer >=1 makes every corner leaf convergent.) *)
+  Module[{neg},
+    neg[i_] := Module[{r = Re[aVals[[i]] /. eps -> 0]},
+      TrueQ[r < 0] || (NumericQ[r] && r < 0)];
+    With[{m = SelectFirst[offDirs, neg, None]},
+      If[m =!= None,
+        Message[TropicalEval::offaxispow, sectorData["ConeIndex"], m];
+        Return[$Failed]]];
+    With[{p = SelectFirst[poleDirs, neg, None]},
+      If[p =!= None,
+        Message[TropicalEval::ibpresidual, sectorData["ConeIndex"], 0, p,
+                aVals[[p]] /. eps -> 0];
+        Return[$Failed]]]
+  ];
+
+  (* Build all corners (iterated IBP over the divergent set). *)
+  cornersResult = IBPBuildCorners[sectorData, eps, pfBase, lmf, lmp, imB,
+                                  divVars, domC];
+  corners = cornersResult[[1]];
+  badDir  = cornersResult[[2]];
+  If[corners === $Failed,
+    (* Defensive: with the Re=0 guard above this is unreachable (one raise makes
+       every leaf convergent).  A surviving Re(alpha0)<=0 leaf would be an
+       on-axis (theta=0) unreduced residual, so report it as such. *)
+    Message[TropicalEval::ibpresidual, sectorData["ConeIndex"], 0, badDir,
+            "Re<=0 after one IBP raise"];
+    Return[$Failed]
+  ];
+
+  (* Off-axis prefactor data: theta_m (exact symbolic), c_m = d Re(alpha_m)/d eps,
+     and r_m = a_m^(2)/c_m (the second-order ratio, used only by the driver's
+     degenerate-kp fallback when a lone off-axis theta crosses 0 and the direction
+     becomes a genuine 1/(c_m eps) pole at that kp).  Im(alpha_m) is eps-free
+     (splitdivmono guards otherwise), so D[aVals[[m]],eps] is the real c_m. *)
+  offThetas = Table[ibpImagPole[sectorData, m, eps], {m, offDirs}];
+  offCks    = Table[D[aVals[[m]], eps] /. eps -> 0, {m, offDirs}];
+  offRks    = Table[
+    Module[{cm = D[aVals[[m]], eps] /. eps -> 0,
+            am2 = (1/2) D[aVals[[m]], {eps, 2}] /. eps -> 0},
+      If[TrueQ[cm == 0], 0, am2/cm]],
+    {m, offDirs}];
+
+  (* Pole data (the single 1/eps factor), if a genuine pole is present. *)
+  If[hasPole,
+    ck   = D[aVals[[k]], eps] /. eps -> 0;
+    Module[{ak2 = (1/2) D[aVals[[k]], {eps, 2}] /. eps -> 0},
+      rk = If[TrueQ[ck == 0], 0, ak2/ck]];
+    dlog = If[eps === None, 0, D[Log[pfBase], eps] /. eps -> 0],
+    ck = None; rk = 0; dlog = 0
+  ];
+
+  <|"ConeIndex"             -> sectorData["ConeIndex"],
+    "IsDivergent"           -> True,
+    "Method"                -> "IBP",
+    "MultiDiv"              -> True,
+    "Corners"               -> corners,
+    "NCorners"              -> Length[corners],
+    (* NTerms alias so the verbose driver's Total[#["NTerms"]&/@...] stays
+       numeric across mixed single-pole / MultiDiv sectors. *)
+    "NTerms"                -> Length[corners],
+    "Dimension"             -> n,
+    "DetM"                  -> detM,
+    "HasPole"               -> hasPole,
+    "PoleDir"               -> If[hasPole, k, None],
+    "OffAxisDirs"           -> offDirs,
+    "ck"                    -> ck,
+    "rk"                    -> rk,
+    "DLogPrefactor"         -> dlog,
+    "OffAxisThetas"         -> offThetas,
+    "OffAxisCks"            -> offCks,
+    "OffAxisRks"            -> offRks,
+    "DivergentVariables"    -> divVars,
+    "NDivergent"            -> Length[divVars],
+    "OriginalExponents"     -> aVals,
+    "OriginalPolyExponents" -> sectorData["PolynomialExponents"],
+    "TransformedPolys"      -> sectorData["TransformedPolys"],
+    "MinExponents"          -> sectorData["MinExponents"],
+    "MonomialExponents"     -> sectorData["MonomialExponents"],
+    "RawExponents"          -> sectorData["RawExponents"],
+    "DomainConstraint"      -> domC,
+    "ImagPolyExponents"     -> Lookup[sectorData, "ImagPolyExponents", None]|>
+];
+
+(* --------------------------------------------------------------------------
    IBPProcessSector
    Full IBP pipeline: reduce, expand in epsilon, flatten, build boundary.
    Returns an IBPSectorData association ready for C++ codegen.
@@ -5118,6 +5517,10 @@ Module[
    For single divergence: produces boundary (at y_k = 1) and IBP terms.
    The combination is:
        I_sector = (1/a_k) [ B_boundary - sum_t coeff_t I_t ]
+
+   For one pole + N off-axis divergent directions (planIBPMULTIDIV.md): the
+   off-axis directions are finite (1/(i theta_j)); IBPProcessSectorMultiDiv
+   assembles the full 2^(N+1)-corner iterated IBP (tagged "MultiDiv" -> True).
    -------------------------------------------------------------------------- *)
 
 IBPProcessSector[sectorData_Association, integrandSpec_Association] :=
@@ -5141,19 +5544,39 @@ Module[
      real-A sectors -> no monomial phase emitted -> byte-identical (#25). *)
   lmp = Lookup[sectorData, "LiftedMonoPhase", None];
 
-  (* Nested-divergence guard (G-B scope): the boundary construction (Step 2)
-     and the driver's Laurent assembly support a SINGLE divergent variable per
-     sector (one 1/eps pole).  A sector with >1 divergent variable would
-     require a 1/eps^d assembly that is not implemented; proceeding divides by a
-     vanishing effective exponent and leaks ComplexInfinity into the C++.
-     Detect up front (from the effective exponents at eps=0) and refuse. *)
-  Module[{a0chk = sectorData["NewExponents"] /. eps -> 0, nDiv},
-    nDiv = Count[a0chk, _?(Function[v,
-      TrueQ[Re[v] <= 0] || (NumericQ[v] && Re[v] <= 0)])];
-    If[nDiv > 1,
-      Message[TropicalEval::nestedIBP, sectorData["ConeIndex"], nDiv];
+  (* Off-axis-aware divergence classification (planIBPMULTIDIV.md §3.1/§3.2).
+     A direction is a genuine 1/eps POLE only when Re(alpha0)=0 AND theta=0;
+     a Re(alpha0)<=0 direction with theta!=0 is OFF-AXIS (finite, 1/(i theta)),
+     NOT a pole.  Refuse only on >1 genuine pole (real 1/eps^{d>=2}); off-axis
+     directions no longer inflate the count.  theta=0 on every real / Case-A
+     sector -> no off-axis directions -> the existing single-pole construction
+     below runs verbatim (byte/numerically identical, #25). *)
+  Module[{cls, poleDirs, offDirs},
+    cls      = Table[ibpDivClass[sectorData, i, eps], {i, n}];
+    poleDirs = Select[Range[n], cls[[#]] === "Pole" &];
+    offDirs  = Select[Range[n], cls[[#]] === "OffAxis" &];
+    If[Length[poleDirs] > 1,
+      Message[TropicalEval::nestedIBP, sectorData["ConeIndex"], Length[poleDirs]];
       Return[$Failed]
+    ];
+    (* eps-dependent theta on any off-axis direction is out of scope (it scales
+       the oscillation with 1/eps; planIBPCX.md §8 / splitdivmono).  NOTE: a bare
+       Return[$Failed] inside Do[Module[...]] would NOT propagate out of this
+       function (it exits only the Do iteration) — find the offender first, then
+       Return at the Module top level (where Return does propagate). *)
+    Module[{badOff = SelectFirst[offDirs,
+        (!FreeQ[ibpImagPole[sectorData, #, eps], eps]) &, None]},
+      If[badOff =!= None,
+        Message[TropicalEval::splitdivmono, sectorData["ConeIndex"],
+                ibpImagPole[sectorData, badOff, eps]];
+        Return[$Failed]]];
+    (* Any off-axis direction present -> the generalized multi-corner path
+       (also covers the single-off-axis no-pole case, cc_47 Part C). *)
+    If[Length[offDirs] > 0,
+      Return[IBPProcessSectorMultiDiv[sectorData, integrandSpec,
+                                      poleDirs, offDirs]]
     ]
+    (* else: no off-axis, <=1 pole -> fall through to the single-pole path. *)
   ];
 
   (* Step 1: IBP reduction *)
@@ -5294,7 +5717,11 @@ Module[
   ];
 
   (* ----- Step 3: Process each IBP term (expand in eps + flatten) ----- *)
-  ibpTermsProcessed = Table[
+  (* Catch wraps the per-term verify (planIBPMULTIDIV.md §3.4): a bare
+     Return[$Failed] inside Table[Module[...]] does NOT propagate — it leaves an
+     unevaluated Return[$Failed] in one cell and the function keeps going.  Throw
+     to this tag so a genuine unreduced residual cleanly aborts the whole sector. *)
+  ibpTermsProcessed = Catch[Table[
     Module[{term, alpha, alpha0, alpha1, termPolyExps, tB0, tB1,
             coeff, coeff0, coeff1, flatPrefactor, flatPolys,
             logInsertions, termMonoFactorLog, termMonoPhaseLog},
@@ -5307,13 +5734,20 @@ Module[
       alpha0 = alpha /. eps -> 0;
       alpha1 = D[alpha, eps] /. eps -> 0;
 
-      (* Verify all alpha0 > 0 *)
+      (* Verify all alpha0 > 0.  Off-axis-aware (planIBPMULTIDIV.md §3.4): a
+         Re(alpha0)<=0 direction whose effective exponent carries a nonzero
+         imaginary part is a bounded off-axis term (finite), not a residual; only
+         a genuine on-axis (theta=0) residual aborts.  In the single-pole path
+         every divergent direction is a pole that one IBP step raises, so this
+         never fires for supported sectors — it is a backstop. *)
       Do[
         If[(NumericQ[alpha0[[i]]] && Re[alpha0[[i]]] <= 0) ||
            TrueQ[Re[alpha0[[i]]] <= 0],
-          Print["ERROR: IBPProcessSector: term ", t,
-                " alpha0[", i, "] = ", alpha0[[i]], " <= 0"];
-          Return[$Failed]
+          If[TrueQ[PossibleZeroQ[Im[alpha0[[i]]]]],
+            Message[TropicalEval::ibpresidual, sectorData["ConeIndex"], t, i,
+                    alpha0[[i]]];
+            Throw[$Failed, "ibpverify"]
+          ]
         ],
         {i, n}
       ];
@@ -5380,7 +5814,8 @@ Module[
       |>
     ],
     {t, Length[terms]}
-  ];
+  ], "ibpverify"];
+  If[ibpTermsProcessed === $Failed, Return[$Failed]];
 
   <|
     "ConeIndex"              -> sectorData["ConeIndex"],
@@ -5429,8 +5864,10 @@ Module[
        is finite (no 1/eps pole); the driver assembles 1/(i theta_k). *)
     "ImagPole"               -> imagPole,
     (* 1/ck is the real-pole residue; authoritative only when ImagPole == 0
-       (planIBPCX.md §3.1).  Kept for diagnostics / back-compat. *)
-    "AnalyticPole"           -> 1/ck
+       (planIBPCX.md §3.1).  Kept for diagnostics / back-compat.  Guard ck=0
+       (a pure-imaginary off-axis direction reaching this single-pole path would
+       give 1/0 = ComplexInfinity and a Power::infy warning; planIBPMULTIDIV §3.6). *)
+    "AnalyticPole"           -> If[TrueQ[ck == 0], Indeterminate, 1/ck]
   |>
 ];
 
@@ -6181,6 +6618,77 @@ Module[
                 bndBase, bndLog, S0, S1, ckS, rkS,
                 poleCont, finiteCont, imagPoleSym, theta0},
           sMap     = ibpFuncMap[[s]];
+
+          If[TrueQ[sMap["MultiDiv"]],
+          (* ===== One-pole + N-off-axis corner assembly (planIBPMULTIDIV §3.3) =====
+             I = [1/(c_k eps)] prod_j[1/(i theta_j)] sum_corners (sign) L_corner.
+             Let NB = sum sign*Coeff0*base, NL = sum sign*(Coeff0*log + Coeff1*base),
+             K0 = prod_j 1/(i theta_j), K1 = K0 * sum_j(-c_j/(i theta_j)).  Then
+             pole   = K0 NB / c_k,
+             finite = (K0 NL + (K1 - r_k K0) NB)/c_k + DLogPrefactor*pole.
+             No pole (all off-axis): pole = 0, finite = K0 NB.  This reduces to the
+             single-pole / single-off-axis formulas below for |D| = 1. *)
+            Module[{ps, pieces, NB, NL, K0, K1, offTh, offCk, offRk, hasPole,
+                    ckM, rkM, dlogM, degenerate},
+              ps     = ibpProcessedSectors[[s]];
+              pieces = sMap["Pieces"];
+              offTh  = ps["OffAxisThetas"] /. kinRules;
+              offCk  = ps["OffAxisCks"]    /. kinRules;
+              offRk  = ps["OffAxisRks"]    /. kinRules;
+              hasPole = TrueQ[ps["HasPole"]];
+              dlogM  = ps["DLogPrefactor"] /. kinRules;
+
+              (* Signed corner sums (always needed). *)
+              NB = 0.; NL = 0.;
+              Do[
+                Module[{pc = pieces[[p]], sgn, c0, c1, baseMC, logMC},
+                  sgn    = pc["Sign"];
+                  c0     = pc["Coeff0"] /. kinRules;
+                  c1     = pc["Coeff1"] /. kinRules;
+                  baseMC = mcCx[pc["BaseFuncId"]];
+                  logMC  = mcCx[pc["LogFuncId"]];
+                  NB += sgn * c0 * baseMC;
+                  NL += sgn * (c0 * logMC + c1 * baseMC);
+                ],
+                {p, Length[pieces]}];
+
+              (* Mixed-grid guard: a symbolically-nonzero theta that vanishes at
+                 THIS kp.  All off-axis theta off-axis -> the standard assembly;
+                 a lone off-axis crossing 0 (no co-located pole) becomes a genuine
+                 1/(c_m eps) pole at this kp -> fall back to the real-pole formula
+                 (exactly as the single-off-axis path does); a co-located pole or
+                 a second off-axis crossing 0 is a 1/eps^2 the path does not
+                 assemble -> Indeterminate (clean, flagged, never a wrong number). *)
+              degenerate = AnyTrue[offTh, (Abs[N[#]] < 10.^-12) &];
+              Which[
+                !degenerate,
+                  K0 = Times @@ (1/(I*#) & /@ offTh);
+                  K1 = K0 * Total[-offCk/(I*offTh)];
+                  If[hasPole,
+                    ckM = ps["ck"] /. kinRules;
+                    rkM = ps["rk"] /. kinRules;
+                    poleCont   = K0 * NB / ckM;
+                    finiteCont = (K0*NL + (K1 - rkM*K0)*NB)/ckM + dlogM*poleCont;
+                  ,
+                    poleCont   = 0;
+                    finiteCont = K0 * NB;
+                  ],
+                !hasPole && Length[offTh] == 1,
+                  (* lone off-axis became the pole at this kp *)
+                  ckM = First[offCk]; rkM = First[offRk];
+                  poleCont   = NB / ckM;
+                  finiteCont = (NL - rkM*NB)/ckM + dlogM*poleCont,
+                True,
+                  Print["WARNING: IBP MultiDiv sector ", sMap["ConeIndex"],
+                        ": off-axis theta ~ 0 at kp ", i,
+                        " with a co-located pole / second off-axis (1/eps^2 not ",
+                        "assembled); result set Indeterminate at this kp."];
+                  poleCont = Indeterminate; finiteCont = Indeterminate
+              ];
+              ibpContribPole   += poleCont;
+              ibpContribFinite += finiteCont;
+            ]
+          , (* ===== existing single divergent-direction path ===== *)
           bndBaseFid = sMap["BndBaseFuncId"];
           bndLogFid  = sMap["BndLogFuncId"];
           termFids   = sMap["TermFuncIds"];
@@ -6243,6 +6751,7 @@ Module[
 
           ibpContribPole   += poleCont;
           ibpContribFinite += finiteCont;
+          ] (* end If MultiDiv / single-direction *)
         ],
         {s, Length[ibpFuncMap]}
       ];

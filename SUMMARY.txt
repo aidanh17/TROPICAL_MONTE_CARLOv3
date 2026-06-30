@@ -566,10 +566,13 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
 6.  KNOWN LIMITATIONS
 ================================================================================
 
-  L1. SINGLE DIVERGENT VARIABLE PER SECTOR.
-      Both divergence methods (subtraction and IBP) handle at most ONE divergent
-      variable per sector (a simple 1/eps pole).  Sectors with >1 divergent
-      variable are refused ($Failed, TropicalEval::nested / ::nestedIBP).
+  L1. AT MOST ONE GENUINE 1/eps POLE PER SECTOR.
+      The Subtraction method handles at most ONE divergent variable per sector.
+      The IBP method handles at most ONE genuine 1/eps POLE (Re(alpha0)=0 AND
+      theta=0) per sector, but may ALSO carry N >= 0 co-located OFF-AXIS divergent
+      directions (Re(alpha0)<=0 AND theta!=0, which are FINITE) -- see the off-axis
+      note under L2 and planIBPMULTIDIV.md.  Sectors with >1 genuine pole (a real
+      1/eps^{d>=2}) are refused ($Failed, TropicalEval::nested / ::nestedIBP).
       The full integral at a fixed eps is still reachable via "EpsilonValue".
 
   L2. LIFTING + A SIMPLE 1/eps POLE -- SUPPORTED (Case A; + complex B AND complex
@@ -646,7 +649,32 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
       before flattening, so the bulk theta-phase coefficient is theta/alpha0_raised
       = O(theta), bounded.  The driver carries theta_k as "ImagPole" and branches
       the Laurent assembly (theta=0 -> real pole, byte/numerically identical;
-      theta!=0 -> pole 0, finite (bndBase-S0)/(i theta_k)).  IBP also BATCHES over
+      theta!=0 -> pole 0, finite (bndBase-S0)/(i theta_k)).
+
+      ONE POLE + N OFF-AXIS in the SAME cone -- SUPPORTED (UNLIFTED) on the IBP
+      route (planIBPMULTIDIV.md, cc_51 (N=1) + N=2 validation).  A cone whose
+      soft rays mix a genuine pole (Re=0, theta=0) with one or more off-axis
+      directions (Re=0, theta!=0) was formerly miscounted as a nested divergence
+      (the off-axis directions inflated the Re<=0 count) and refused.  Directions
+      are now classified by (Re, theta) (ibpDivClass): only genuine poles count
+      toward the nested refusal.  The sector is assembled by the full
+      2^(N+1)-corner iterated IBP (IBPBuildCorners): each divergent direction is
+      peeled into a BOUNDARY (y=1, drop coord, sign +) or BULK (raise alpha,
+      sign -) corner; the global prefactor [1/(c_k eps)] * prod_j[1/(i theta_j)]
+      factors out (the pole 1/(c_k eps) is the only eps-singular factor, so the
+      Laurent is still orders -1 and 0 only -- no 1/eps^2).  pole = K0 NB / c_k,
+      finite = (K0 NL + (K1 - r_k K0) NB)/c_k + DLogPrefactor*pole, with
+      K0 = prod_j 1/(i theta_j), K1 = K0 sum_j(-c_j/(i theta_j)); for |D|=1 this
+      reduces to the single-pole / single-off-axis formulas exactly (the existing
+      paths are untouched when no off-axis direction is present -> #25).  Verified
+      against the closed-form Dirichlet oracle (Gamma functions) for N=1 (cc_51)
+      and N=2.  EXCEPTION: the LIFTED co-located case (a lift z-variable + a pole
+      + an off-axis direction) is still refused at ProcessSectorLifted
+      (TropicalEval::liftnopivot: its pivot admittance counts realified Re<=0
+      directions, not poles) -- cc_52 (B); the off-axis-aware lifted pivot
+      admittance is future work.
+
+      IBP also BATCHES over
       kinematics: Integrator->"VEGAS", "Batch"->True now runs chunked-ncomp Vegas
       over the IBP function table sharing samples across a kp-chunk, preserving the
       (1+n_ibp)-row-per-kp output contract (cc_50 (B): batched IBP == per-kp IBP).
@@ -712,8 +740,11 @@ Generated intermediate files (TROPICAL_MONTE_CARLO3/INTERFILES/):
       their magnitude is unknown at lift time.  Manual lift rules still allowed.
 
   L8. NESTED DIVERGENCES (1/eps^{d>=2}).
-      Both divergence methods refuse sectors with >1 divergent variable.
-      Multi-order pole assembly is future work.
+      Sectors with >1 GENUINE 1/eps pole (each Re(alpha0)=0 AND theta=0) are
+      refused (TropicalEval::nested / ::nestedIBP); multi-order pole assembly is
+      future work.  NOTE: co-located OFF-AXIS directions (theta!=0) are FINITE and
+      no longer count toward this refusal on the IBP route -- one pole + N off-axis
+      is supported (L1, L2 off-axis note, planIBPMULTIDIV.md).
 
   L9. HARNESS HYGIENE.
       Do not use over-broad Check[expr, $Failed] in test/driver harnesses --
@@ -834,3 +865,11 @@ Highest-value checks:
         NIntegrate / exact Gamma-Laurent, pole & finite [planIBPCX.md §5.1]
   cc_50 F2 OFF-AXIS (theta!=0) divergent directions: IBP (pole~0, finite) vs exact
         Gamma-Laurent & NIntegrate + reseed; batched IBP == per-kp IBP [planIBPCX.md]
+  cc_51 ONE pole + ONE off-axis in the same cone (UNLIFTED): the corner cone no
+        longer refused (nestedIBP); 2^(N+1)-corner iterated IBP pole & finite (Re
+        and Im) vs the closed-form Dirichlet oracle; Direct == SplitRealImag;
+        structural self-check nPole==1 AND exists OffAxis [planIBPMULTIDIV.md]
+  cc_52 lifted-sector domain-indicator complex-typing fix (§3.5): real-typed
+        byte-identical (no .real()), complex-typed takes .real() AND compiles;
+        plus the documented scope boundary -- lifted co-located pole+off-axis
+        refused cleanly (liftnopivot) [planIBPMULTIDIV.md]
