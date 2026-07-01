@@ -1,0 +1,49 @@
+SUMMARY -- bug identified in lifted DIVERGENT IBP (engine 6020ef9, branch
+ibpcx-lifted-divergent-regulator-real, md5 89ef1d2). All sandbox tests; the v3
+repo and the production fourpt engine were NOT modified (instrumented a scratch
+copy in scratchpad/bughunt/).
+
+1. THE BUG IS REAL (probe10, the decisive test). Same driver EvaluateTropicalMCLifted,
+   ONLY the lift toggled (Threshold 1e9 = no-lift fallback vs 35 = lift), divergent
+   presector 1, mu=I, mild point r1=0.1 (Vegas reliable):
+      no-lift: pole=-1.28e-8,  finite=-3.69e-8+1.40e-7 I
+      lift:    pole=-5.45e-13, finite=-4.90e-9 +6.59e-9 I
+   The lift is an exact identity => must match. It doesn't.
+
+2. IT IS NOT THE CLASSIFICATION (my earlier off-axis hypothesis is DISPROVEN).
+   Sandbox-instrumented ibpDivClass on all 10 lifted divergent cones: each has
+   exactly ONE "Pole" direction (theta=0) and offDirs={} (NO off-axis). The
+   regulator-real fix correctly gives theta=0 on the genuine pole direction; the
+   theta!=0 directions are all Re(alpha0)>0 ("Convergent", not poles). So the
+   off-axis / MultiDiv machinery is NOT involved -- it is the STANDARD single-pole
+   lifted IBP path.
+
+3. ROOT CAUSE: incomplete z0 bookkeeping in the lifted divergent VALUE assembly.
+   The sandbox shows PrefactorBase IS present and carries z0^E with
+      E|_{dEps=0} = -3 + 4(2i + 9/2 - 2(11/2+i)) + 2(-2i - 9/2 + 2(11/2+i))
+                    + 4(1/2) + 8(2 - 3/2) = -10,   z0 = sqrt(44.44) = 6.667
+   i.e. PrefactorBase ~ z0^-10. For an exact lift this huge negative power must be
+   cancelled by the z0^+ factors the lift puts on the cleared-poly coefficients
+   (and the z0-dependent MonoFactorLog phase) inside the corner/boundary integrals.
+   The cancellation is INCOMPLETE: probe10's finite ratio no-lift/lift = 16.3 - 6.5 I
+   has |.| = 17.6 = z0^1.5 (=17.2), with a residual phase. So the lifted divergent
+   result is short by ~z0^(1.5) in magnitude PLUS a z0 phase -> a z0^(~1.5)*phase
+   factor is dropped in the SplitRealImag x lifted x divergent corner/boundary
+   integrand (the pole boundary at y_k=1 and/or the per-piece MonoFactorLog z0 term).
+   (The lifted pole -5.45e-13 is below MC noise here; the FINITE ratio is the clean
+   signal. The pole is presumably mis-normalized by the same z0 factor.)
+
+4. WHY THIS PATH IS THE FIRST TO HIT IT: the CONVERGENT lift is exact (probe3, 0.13%);
+   the real-mu single-pole lift was cc_45-validated. This is the new, previously-
+   untested SplitRealImag x lifted x DIVERGENT combination (the 4-point principal-
+   series divergent presectors 1-2).
+
+WHERE TO LOOK: the lifted single-pole divergent assembly -- where PrefactorBase
+(z0^{a_p/m_p-1}) is combined with the corner/boundary cleared-poly z0^{e_p/m_p}
+coefficients and the MonoFactorLog z0 phase. One z0 power (magnitude ~1.5 here) and
+its phase are not threaded through, so PrefactorBase's z0^{-10} is undercompensated.
+
+REPRO (all in CROSSCHECK/fourpt/Fourptpp/, sandbox in scratchpad/bughunt/):
+ - probe10_samefn.wl  (no-lift vs lift, same driver -> the mismatch)
+ - bughunt2.log       (instrumented classification: poleDirs/offDirs + PrefactorBase=z0^-10)
+ - probe3_exact_identity.wl (convergent lift exact, 0.13% -- machinery is fine)

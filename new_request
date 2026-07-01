@@ -1,0 +1,223 @@
+UPDATED feature-request doc (CROSSCHECK/IBPCX_LIFTED_DIVERGENT_FEATURE.md). Root cause now pinned: after planIBPMULTIDIV (ab354a7), the lifted divergent presectors refuse with splitdivmono "theta_k eps-DEPENDENT" because Im[deps] is not simplified to 0 (regulator deps not assumed real); Im(delta+) shows up as 1 - Im[deps] instead of 1. Fix = assume Im[eps]=0 when forming/testing theta_k. See the UPDATE 2026-06-30 section at the bottom. Full text follows.
+
+------------------------------------------------------------
+# Feature request — Tropical_Monte_Carlov3: IBP on a *lifted* divergent sector whose
+# extra soft directions are off-axis (the "one real pole + N off-axis directions" case)
+
+**Author:** fourpt cross-check (CROSSCHECK/) · **Date:** 2026-06-30
+**Engine under test:** `aidanh17/Tropical_Monte_Carlov3` `v3-build` @ **`3955950`**
+("planIBPCX: IBP off-axis complex poles + IBP batching"), md5 `fa397a9e` of `tropical_eval.wl`
+(8154 lines). Line numbers below are this commit unless noted.
+
+---
+
+## 0. Is this a bug? No — it is a *documented, intentional limitation*.
+
+The engine returns a clean `$Failed` (never a wrong number) on a case its own spec marks
+out-of-scope. `planIBPCX.md` (in the repo) is explicit:
+
+- **§3.5:** "a sector with one real pole *and* one off-axis direction is `nDiv=2` → refused
+  today even though it is only one true pole. Note as future work (§8)."
+- **§8 (Still refused / out of scope):** "Nested / higher-order poles (>1 divergent variable),
+  **including the mixed case 'one real pole + one off-axis direction'** (`nestedIBP` counts both)."
+
+So this is a **feature gap**, not a defect. `planIBPCX` made the single-divergent-direction
+**prefactor** off-axis-aware (`splitdivmono` downgraded from refusal to a branch); it did **not**
+extend the off-axis criterion to the **divergence count / residual-divergence guard**. This
+document specifies the remaining increment, because the 4-point cross-check needs it to lift the
+*divergent* presectors.
+
+(For contrast: the only thing in this engine I'd call an actual *bug* is on the **Subtraction/
+Laurent** route — `emitDomainIndicatorCpp` emits `double log_ypstar = (… cx(…) …)` for a lifted
+`SplitRealImag` domain indicator, which g++ rejects (`cannot convert std::complex<double> to
+double`); the indicator is provably real so a `.real()` fixes it. That route is moot here since we
+use IBP, but noting it for completeness, `tropical_eval.wl:2362–2377`.)
+
+---
+
+## 1. Context — what we are computing and why the lift+IBP combination is needed
+
+Reproducing the 4-point loop-seed `J^00(r1,r2)` of arXiv:2211.03810 `fig_trispectrum`
+(`CROSSCHECK/fourpt/`), principal series `μ = i ν̃` (⇒ **complex** monomial/polynomial exponents),
+single-squeezed slice `r2=0.9`, `r1 ∈ [1e-4, 1e-0.5]`. Two facts force the lift × IBP combination:
+
+1. **Divergence.** `J^00` has a single simple UV pole (`[…]_MS̄` in eq. 12). In the repo
+   decomposition the divergent cones live only in `++` presectors 1–2, **one divergent variable per
+   cone, `c_k = 2/7`** (see `Fourptpp/.../RESULTS/divergence_map_fourpt.m`). So per physics there is
+   **exactly one simple pole and no nested/higher-order divergence.**
+2. **Hierarchy.** At deep squeeze `k12 = 1/r1 → 1e4`, the master polynomial coefficient `4·k12`
+   spans ~10^4. This is exactly the regime the auxiliary-variable uplift targets; without it the
+   tropical map mismatches the integrand and Vegas variance blows up.
+
+We need **IBP** (per the off-axis pole structure; Subtraction/pinned-ε cannot resolve `θ≠0`, see
+`planIBPCX §1.2`) **combined with the uplift** (for the hierarchy), on the divergent presectors.
+
+---
+
+## 2. What works, what fails (all reproduced; scripts in `CROSSCHECK/fourpt/Fourptpp/`)
+
+| case | route | result |
+|---|---|---|
+| exact lift identity, convergent presector, deep squeeze | NIntegrate per sector | **PASS** lifted vs unlifted = **0.13%** (`probe3_exact_identity.wl`) |
+| lift × `SplitRealImag`, convergent presector | `EvaluateTropicalMCLifted`, MC | **PASS** runs, 412 sectors, no abort (`probe2`/`probe1`) |
+| **divergent** presector 1, **unlifted**, IBP, complex | `EvaluateTropicalMCIBP` | **PASS** pole `-5.4e-22+2.5e-21i`, finite `-8.0e-19` (`probe6_ibp_complex.wl`) |
+| **divergent** presector 1, **lifted**, IBP, complex | `EvaluateTropicalMCLifted`, `Method->Automatic`, `SplitRealImag` | **`$Failed`** — "nested / higher-order pole" for 10/10 divergent cones (`probe6`) |
+
+The last row is the gap.
+
+---
+
+## 3. The evidence — realified count loses the off-axis information
+
+From `probe6.log`, the effective exponents at `eps→0` the two paths hand the IBP reducer:
+
+**Unlifted** (Direct mode keeps exponents complex):
+```
+sector 18:  {0, 1/4 + I/2, 1/2 + I, 3/4 + I/2, 5}     <- ONE bare 0 (the pole); the rest Re>0
+sector 23:  {3/2 + I, 0, 1/4 + I/2, 1/2 + I, 5}
+```
+Exactly **one** genuine pole direction (`α0 = 0`, Re=0 ∧ Im=0). Every other direction has `Re>0`
+(carrying `Im≠0`), so it is convergent. IBP sees one pole → **succeeds**.
+
+**Lifted + `SplitRealImag`** (the imaginary parts have already been split off into the phase, so the
+exponents the guard sees are **real**):
+```
+sector 22:  {10, 4/13, 3/4, 0, 1/2}    <- reducer finds ONE divergent variable y_4 (the bare 0)
+sector 23:  {10, 3/4, 0, 1/4, 1/2}
+```
+`IBPReduceSector` correctly finds `nDiv = 1` and runs its single IBP step (`1 -> 31 terms`). It then
+`$Failed` **inside `IBPProcessSector`** — the post-IBP guard "verify all `α0 > 0`"
+(`tropical_eval.wl:5148–5157`, the `ERROR: … alpha0[i] = … <= 0` at `:5152`) trips on a direction
+whose **realified** exponent has `Re ≤ 0`. Because `SplitRealImag` peeled the imaginary part into the
+oscillatory phase, this guard sees only `Re` and cannot distinguish a genuine soft direction
+(`Re=0 ∧ Im=0`) from an **off-axis** one (`Re=0, Im≠0`, value `1/(iθ)` finite). It reports
+"nested / higher-order pole" where — per the physics of §1.1 — **there is only one true pole.**
+
+This is the *same* full-complex-exponent principle `planIBPCX` already applied to the prefactor
+(`ibpImagPole` `:4950`; driver off-axis branch `:6199–6241`; `splitdivmono` message `:216`), simply
+**not yet applied to the count / residual-divergence guard.**
+
+---
+
+## 4. Two candidate root causes — and the diagnostic that distinguishes them
+
+The reducer reported `nDiv=1` at the *start*; the failure is *post*-IBP. So there are two
+possibilities, needing **different** features:
+
+- **(A) Off-axis miscount (most likely).** A post-IBP term has a direction with `Re(α0)=0` but
+  `Im(α0)≠0`. It is finite (off-axis), but the `Re`-only `verify α0>0` guard counts it as a residual
+  divergence. **Feature:** extend the off-axis criterion (already in `ibpImagPole`) to the
+  count/verify guard — a direction is a genuine pole only if `Re(α0)=0` **and** `Im(α0)=0`; off-axis
+  directions are IBP-reduced-to-finite, not counted. Then `one real pole + N off-axis ⇒ nDiv=1`.
+
+- **(B) Genuine per-cone higher-order residual.** The lift's change of variables produces an
+  individual cone with a real `1/eps^2`-type structure (which must cancel in the cone sum, since the
+  physical total is a simple pole). **Feature:** iterated IBP (reduce the residual soft direction in a
+  second step), i.e. lift the "single divergent variable per sector" restriction
+  (`nestedIBP`, `:201`, `:5010–5013`). This is strictly more work than (A).
+
+**Discriminating diagnostic (cheap, read-only, ~1 cone):** carry the *full complex* effective
+exponents through the IBP step on lifted `Fourptpp` presector-1 / sector-22 and inspect the direction
+that trips `:5148–5157`. If `Im≠0` → case (A). If `Im=0, Re<0` → case (B). I can run this on request;
+the physics (single simple pole) makes (A) the expected outcome, but I have **not** confirmed it —
+stated honestly so the engine work targets the right feature.
+
+---
+
+## 5. The feature (assuming case A; the common, expected case)
+
+Make the IBP **divergence classification** off-axis-aware everywhere it counts directions, mirroring
+what `ibpImagPole`/the driver branch already do for the prefactor:
+
+1. **`IBPReduceSector` divergent-variable detection** (`Re(α0)≤0` test, ~`:4832`, `:4988`) and the
+   **`nDiv`/`nestedIBP` gate** (`:4986–4992`, `:5010–5013`): a direction counts as a *pole* only when
+   `Re(α0)=0` **and** `PossibleZeroQ[ibpImagPole-style θ for that direction] == True`. Off-axis
+   directions (`Re=0, Im≠0`) are excluded from `nDiv`.
+2. **Post-IBP `verify all α0>0`** (`:5148–5157`): pass a direction with `Re(α0)=0` **iff** its
+   imaginary part is nonzero (off-axis ⇒ finite ⇒ OK); only fail on a true `Re≤0 ∧ Im=0` residual.
+3. **Reduce off-axis directions to finite, not pole.** Each off-axis direction gets one IBP step
+   (raising its exponent so `|y^{Re}| ` is bounded — `planIBPCX §1.2`); its contribution is the finite
+   `1/(iθ)` boundary+bulk (the `:6240–6241` off-axis branch), **not** a `1/ε` residue. Multiple off-axis
+   directions ⇒ multiple finite IBP steps; still **one** `1/ε` pole (the `Im=0` direction) per sector.
+
+Exactness/byte-identity (per `planIBPCX §6`): the new branch activates only when some `Re=0`
+direction has `Im≠0`; the real/θ=0 path is untouched (`cc_45/46/47/48` and the IBP codegen goldens
+stay green).
+
+If case (B): the above is still necessary but not sufficient — `nestedIBP` must additionally allow a
+genuine second IBP reduction (iterated IBP) for the per-cone higher-order residual.
+
+---
+
+## 6. Validation gates the feature should pass (4-point-specific)
+
+1. `cc_47`/`cc_48` and the existing IBP goldens unchanged (regression / byte-identity on θ=0).
+2. **Lifted divergent `Fourptpp` presector 1, principal μ=I, deep squeeze: IBP no longer `$Failed`**,
+   and its `(pole, finite)` **matches the *unlifted* IBP** value at the same point — the lift is an
+   exact identity, so the pole is unchanged (`= c_k`-structure, `2/7`); only the finite-part *variance*
+   improves. Unlifted reference already in hand: `probe6` → pole `-5.4e-22+2.5e-21i`,
+   finite `-8.0e-19` at `r1=10^-3.5, r2=0.9`.
+3. Sum over all 8 `++` presectors (lifted) reproduces the unlifted total pole `Re ≈ 0.69`-scale and
+   finite within MC error on a non-squeezed point (`r1=r2=0.9`).
+
+---
+
+## 7. Where this sits relative to the repo's own plan
+
+`planIBPCX.md §8` already lists exactly this ("one real pole + one off-axis direction", `nestedIBP`
+counts both) as **future work**. This request is to promote that item to implemented, because it is
+the gating capability for lifting the divergent presectors of the 4-point figure. Until then the
+fourpt production runs **convergent presectors lifted + divergent presectors unlifted via IBP**
+(both validated), which is correct but leaves the divergent presectors' deep-squeeze variance
+un-tamed (expected small: their pole is `~r1^5`-suppressed at deep squeeze).
+
+## 8. Repro pointers
+- `CROSSCHECK/fourpt/Fourptpp/probe6_ibp_complex.wl` + `probe6.log` (the failing lifted case + unlifted reference)
+- `CROSSCHECK/fourpt/Fourptpp/probe3_exact_identity.wl` (lift exactness 0.13%)
+- `CROSSCHECK/fourpt/ENGINE_PIN.txt` (engine commit)
+- repo `planIBPCX.md §3.5, §8`; `why_not_IBP.md` (the assessment planIBPCX supersedes)
+
+---
+
+## UPDATE 2026-06-30 — root cause found (supersedes the §4–5 nested framing)
+
+Tested two newer engines on the lifted divergent presector (`probe6_multidiv.log`, `probe7.log`):
+
+1. **`fa397a9e` (planIBPCX off-axis prefactor):** lifted divergent → `$Failed`, post-IBP
+   "verify α0>0" trips → generic "nested/higher-order" (the §3–5 framing).
+2. **`ab354a7` (planIBPMULTIDIV, "one real pole + N off-axis"):** the MultiDiv classifier is
+   reached (74 conv / 10 div sectors classified), the nested-count issue is gone — **but** all 10
+   lifted divergent cones now refuse with **`splitdivmono`: "theta_k is eps-DEPENDENT"**.
+
+**The eps-dependence is spurious — it is `Im[dϵ]` left un-simplified.** With messages un-suppressed
+(`probe7.log`) the offending `theta_k` is, term by term:
+```
+4 (-2 (1 - Im[dϵ]) - 3 Im[dϵ]),  4 (-1 - Im[dϵ]),  2 Im[dϵ],  2 (2 (1 - Im[dϵ]) + 2 Im[dϵ]), ...
+```
+Every term carries `Im[dϵ]` = imaginary part of the **regulator** `dϵ`. The regulator is real
+(`d = 3 - 2 dϵ`, `dϵ ∈ ℝ`), but `dϵ` is an undeclared symbol, so Mathematica does not reduce
+`Im[dϵ] → 0`. In particular `(1 - Im[dϵ])` is just `Im(δ₊) = Im(3/2 + i ν̃ - dϵ)` left symbolic;
+its physical value is `ν̃ = 1`.
+
+**Under `Im[dϵ] = 0`** (regulator real): `(1 - Im[dϵ]) → 1`, `2 Im[dϵ] → 0`, … so `theta_k`
+collapses to a **constant** (a ν̃-multiple). That is exactly the **constant off-axis case the engine
+already supports** (`s_k = c_k ε + i θ_k`, regular at ε=0). `theta_k` is **not** genuinely
+ε-dependent; the `splitdivmono` guard misfires only because `Im[dϵ]` syntactically contains the
+regulator symbol `dϵ`, so the "scales with the regulator" test returns True.
+
+### The actual fix (small)
+Assume the regulator is real wherever `theta_k` is formed and where its ε-dependence is tested:
+- `ibpImagPole` (~`:4950`) — compute `Σ_j Im(B_j) D_{j,k} + Im(A)_k` under `Im[eps] = 0`
+  (e.g. `Assuming[Element[eps, Reals], …]`, or substitute `Im[eps] -> 0`, or `Refine[…, eps ∈ Reals]`).
+- The ε-dependence guard (`:5030` / `:5196` region) — test `FreeQ`/`D[…,eps]` on the **regulator-real**
+  `theta_k`, so a constant ν̃-multiple is correctly seen as off-axis (not ε-dependent).
+
+This is independent of (and simpler than) the nested-count work: even the unlifted complex sectors
+only avoided it because their `Im(B)` happened not to route onto the soft slot; the lifted divergent
+sectors are the first to put `Im(δ₊) = ν̃ - Im[dϵ]` on the divergent direction, exposing the missing
+`Im[regulator] = 0` assumption.
+
+### Gate after the fix
+Same as §6: lifted divergent `Fourptpp` presector 1, μ=I, deep squeeze → IBP no longer `$Failed`;
+its `(pole, finite)` matches the unlifted IBP reference (`probe6` unlifted: pole `-5.4e-22+2.5e-21i`,
+finite `-8.0e-19`). Repro: `probe7_lifted_ibp_trace.wl` (lifted-only, messages un-suppressed).
