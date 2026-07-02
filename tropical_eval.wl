@@ -258,6 +258,18 @@ ParsePolynomial[poly_, vars_List] := Module[
 TransformExponents[expVec_List, mMatrix_List] := expVec . mMatrix;
 
 (* --------------------------------------------------------------------------
+   reNonPosQ  (invariant #1: the load-bearing exactness predicate)
+   "Is this effective exponent non-positive at eps->0", decided EXACTLY: TrueQ
+   on the symbolic comparison Re[a] <= 0, or — for an explicit number — the
+   exact Re.  NO float tolerance.  This is the divergence test shared by
+   FlattenSector, IdentifyDivergences, and the Module 2b IBP classification;
+   factored here so every site decides divergence identically (plan.md §1.4 /
+   CLAUDE.md invariant #1: no decision inside the decomposition is made by
+   evaluating a float).
+   -------------------------------------------------------------------------- *)
+reNonPosQ[a_] := TrueQ[Re[a] <= 0] || (NumericQ[a] && Re[a] <= 0);
+
+(* --------------------------------------------------------------------------
    FlattenSector  (extracted from ProcessSector; Tree B factoring + Tree A eps)
 
    Given the cleared (min-exponent-shifted) polynomials, the effective monomial
@@ -289,8 +301,7 @@ Module[{a0vals, isDivergent, divVar, n, flattenedPolys, prefactor},
   isDivergent = False;
   divVar = 0;
   Do[
-    If[TrueQ[Re[a0vals[[i]]] <= 0] ||
-       (NumericQ[a0vals[[i]]] && Re[a0vals[[i]]] <= 0),
+    If[reNonPosQ[a0vals[[i]]],
       isDivergent = True;
       divVar = i;
     ],
@@ -1587,8 +1598,7 @@ Module[
   (* Find divergent variables: Re(a_k^(0)) <= 0 *)
   divVars = {};
   Do[
-    If[TrueQ[Re[a0[[i]]] <= 0] ||
-       (NumericQ[a0[[i]]] && Re[a0[[i]]] <= 0),
+    If[reNonPosQ[a0[[i]]],
       AppendTo[divVars, i]
     ],
     {i, n}
@@ -1616,8 +1626,7 @@ Module[
 
   (* Check: all non-divergent variables have Re(a_i^(0)) > 0 *)
   Do[
-    If[i != k && (TrueQ[Re[a0[[i]]] <= 0] ||
-                  (NumericQ[a0[[i]]] && Re[a0[[i]]] <= 0)),
+    If[i != k && reNonPosQ[a0[[i]]],
       Print["WARNING: Sector ", sectorData["ConeIndex"],
             ": non-divergent variable y_", i,
             " has Re(a_", i, "^(0)) = ", Re[a0[[i]]], " <= 0"]
@@ -5105,7 +5114,7 @@ Module[{a0i, th},
                          sectorData["NewExponents"][[i]] /. eps -> 0];
   th  = ibpImagPole[sectorData, i, eps];
   Which[
-    ! (TrueQ[Re[a0i] <= 0] || (NumericQ[a0i] && Re[a0i] <= 0)), "Convergent",
+    ! reNonPosQ[a0i], "Convergent",
     TrueQ[PossibleZeroQ[th]],                                   "Pole",
     True,                                                       "OffAxis"]
 ];
@@ -5148,8 +5157,7 @@ Module[
   a0 = aVals /. eps -> 0;
   allDivVars = {};
   Do[
-    If[TrueQ[Re[a0[[i]]] <= 0] ||
-       (NumericQ[a0[[i]]] && Re[a0[[i]]] <= 0),
+    If[reNonPosQ[a0[[i]]],
       AppendTo[allDivVars, i]
     ],
     {i, n}
@@ -5203,8 +5211,7 @@ Module[
           term    = terms[[t]];
           termA0k = term["NewExponents"][[k]] /. eps -> 0;
 
-          If[TrueQ[Re[termA0k] <= 0] ||
-             (NumericQ[termA0k] && Re[termA0k] <= 0),
+          If[reNonPosQ[termA0k],
             (* Divergent in y_k: apply IBP *)
             newTerms = Join[newTerms,
               IBPExpandOneVariable[term, k, clearedPolys, eps, imB]
@@ -5230,8 +5237,7 @@ Module[
       Module[{termA0},
         termA0 = terms[[t]]["NewExponents"] /. eps -> 0;
         Do[
-          If[TrueQ[Re[termA0[[i]]] <= 0] ||
-             (NumericQ[termA0[[i]]] && Re[termA0[[i]]] <= 0),
+          If[reNonPosQ[termA0[[i]]],
             problemTerms++;
             If[problemTerms <= 3,
               Print["WARNING: term ", t, " still divergent in y_", i,
@@ -5408,7 +5414,7 @@ Module[{n, aVals, polyExps, clearedPolys, nPolys, nPolyExps, nodes, leaves,
   Do[
     Module[{a0 = (leaf["Exps"] /. eps -> 0)[[leaf["Live"]]]},
       Do[
-        If[TrueQ[Re[a0[[i]]] <= 0] || (NumericQ[a0[[i]]] && Re[a0[[i]]] <= 0),
+        If[reNonPosQ[a0[[i]]],
           badDir = leaf["Live"][[i]]],
         {i, Length[a0]}]],
     {leaf, leaves}];
