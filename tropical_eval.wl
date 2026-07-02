@@ -1657,7 +1657,7 @@ ProcessDivergentSector[sectorData_Association, integrandSpec_Association] :=
 Module[
   {eps, k, a0, a1, ck, n, polyExps,
    clearedPolys, detM, pfBase,
-   B0, B1, simpPolys, fullPolys,
+   B0, B1, simpPolys, ndVars,
    g0FlatPolys, g0Prefactor, g0Avals,
    g1LogInsertions,
    remainderData,
@@ -1680,6 +1680,10 @@ Module[
   a0     = divInfo["a0"];
   a1     = divInfo["a1"];
   detM   = sectorData["DetM"];
+  (* Non-divergent variable indices: used by the G0/G1 block (Step 3) and
+     the finite-remainder block (Step 4).  k and n are fixed for the rest
+     of this Module, so this is computed once and shared. *)
+  ndVars = DeleteCases[Range[n], k];
   (* PrefactorBase (planAXpDIV.md §4.1): Abs[detM] for unlifted sectors,
      (Abs[detM]/Abs[mp]) z0^(ap/mp-1) for a lifted sector. *)
   pfBase = Lookup[sectorData, "PrefactorBase", Abs[detM]];
@@ -1701,11 +1705,8 @@ Module[
     {j, Length[clearedPolys]}
   ];
 
-  fullPolys = clearedPolys;
-
   (* --- Step 3: G0 and G1 --- *)
-  Module[{ndVars, g0aVals, g0Dim},
-    ndVars  = DeleteCases[Range[n], k];
+  Module[{g0aVals, g0Dim},
     g0aVals = a0[[ndVars]];
     g0Dim   = n - 1;
 
@@ -1741,49 +1742,36 @@ Module[
   ];
 
   (* --- Step 4: Finite remainder --- *)
-  Module[{ndVars, remAvals, remFlatFullPolys, remFlatSimpPolys,
-          remPrefactor},
-    ndVars   = DeleteCases[Range[n], k];
+  Module[{remAvals, remFlatFullPolys, remFlatSimpPolys,
+          remPrefactor, flattenPartial},
     remAvals = a0[[ndVars]];
 
-    (* Partially flatten: only non-div vars get flattened *)
-    remFlatFullPolys = Table[
+    (* Partially flatten: only non-div vars get flattened.  Same shape for
+       both the full and simplified polynomial lists -- only the source
+       list differs -- so a single local helper builds both. *)
+    flattenPartial = Function[{polyList},
       Table[
-        Module[{coeff, exps, flatExps},
-          coeff = mono[[1]];
-          exps  = mono[[2]];
-          flatExps = Table[
-            If[i == k,
-              exps[[i]],
-              exps[[i]] / a0[[i]]
-            ],
-            {i, n}
-          ];
-          {coeff, flatExps}
+        Table[
+          Module[{coeff, exps, flatExps},
+            coeff = mono[[1]];
+            exps  = mono[[2]];
+            flatExps = Table[
+              If[i == k,
+                exps[[i]],
+                exps[[i]] / a0[[i]]
+              ],
+              {i, n}
+            ];
+            {coeff, flatExps}
+          ],
+          {mono, polyList[[j]]}
         ],
-        {mono, fullPolys[[j]]}
-      ],
-      {j, Length[fullPolys]}
+        {j, Length[polyList]}
+      ]
     ];
 
-    remFlatSimpPolys = Table[
-      Table[
-        Module[{coeff, exps, flatExps},
-          coeff = mono[[1]];
-          exps  = mono[[2]];
-          flatExps = Table[
-            If[i == k,
-              exps[[i]],
-              exps[[i]] / a0[[i]]
-            ],
-            {i, n}
-          ];
-          {coeff, flatExps}
-        ],
-        {mono, simpPolys[[j]]}
-      ],
-      {j, Length[simpPolys]}
-    ];
+    remFlatFullPolys = flattenPartial[clearedPolys];
+    remFlatSimpPolys = flattenPartial[simpPolys];
 
     remPrefactor = pfBase / (Times @@ remAvals);
 
@@ -1794,7 +1782,7 @@ Module[
       "DivVarIndex"   -> k,
       "DivVarExp"     -> a0[[k]],
       "Dimension"     -> n,
-      "NonDivVars"    -> DeleteCases[Range[n], k],
+      "NonDivVars"    -> ndVars,
       "PolynomialExponents" -> B0
     |>;
   ];
