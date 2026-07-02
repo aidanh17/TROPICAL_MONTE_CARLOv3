@@ -6914,112 +6914,21 @@ RunAllTests[] := Module[
   Print["================================================================"];
   Print[""];
 
-  Module[{pass},
-    pass = RunTest1[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 1", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest2[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 2", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest3[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 3", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest4[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 4", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest5[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 5", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest6[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 6", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest7[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 7", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest8[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 8", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest9[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 9", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest10[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 10", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest11[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 11", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest12[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 12", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest13[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 13", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest14[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 14", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest15[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 15", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest16[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 16", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest17[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 17", pass}];
-  ];
-
-  Module[{pass},
-    pass = RunTest18[];
-    If[pass, nPass++, nFail++];
-    AppendTo[results, {"Test 18", pass}];
+  Do[
+    Module[{testName, testFn, pass},
+      {testName, testFn} = testEntry;
+      pass = testFn[];
+      If[pass, nPass++, nFail++];
+      AppendTo[results, {testName, pass}];
+    ],
+    {testEntry, {
+      {"Test 1", RunTest1}, {"Test 2", RunTest2}, {"Test 3", RunTest3},
+      {"Test 4", RunTest4}, {"Test 5", RunTest5}, {"Test 6", RunTest6},
+      {"Test 7", RunTest7}, {"Test 8", RunTest8}, {"Test 9", RunTest9},
+      {"Test 10", RunTest10}, {"Test 11", RunTest11}, {"Test 12", RunTest12},
+      {"Test 13", RunTest13}, {"Test 14", RunTest14}, {"Test 15", RunTest15},
+      {"Test 16", RunTest16}, {"Test 17", RunTest17}, {"Test 18", RunTest18}
+    }}
   ];
 
   Print[""];
