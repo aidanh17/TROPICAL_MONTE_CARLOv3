@@ -1827,6 +1827,33 @@ Module[
 ];
 
 (* --------------------------------------------------------------------------
+   flatPolyValsWL (private helper for ValidateSubtraction)
+   For each polynomial P_j given as a list of {coeff, exponentVector} monomial
+   pairs, evaluates P_j at y_i = Exp[Log[yVarsL_i]] with kinematics substituted:
+     sum_monomials  (coeff /. kinRules) * Exp[Total[exponentVector * Log[yVarsL]]]
+   Shared by the three ValidateSubtraction sites that use the FULL exponent
+   vector unmodified (original-integral block, and the two remainder-block
+   polyVals).  The G0/G1 blocks instead project the exponent vector onto
+   ndVars first -- a genuinely different shape -- so they are NOT routed
+   through this helper and remain inline.
+   -------------------------------------------------------------------------- *)
+flatPolyValsWL[polyList_List, kinRules_List, yVarsL_List] :=
+  Table[
+    Total[
+      Table[
+        Module[{coeff, exps, logY},
+          coeff = mono[[1]] /. kinRules;
+          exps  = mono[[2]];
+          logY  = Log /@ yVarsL;
+          coeff * Exp[Total[exps * logY]]
+        ],
+        {mono, polyList[[j]]}
+      ]
+    ],
+    {j, Length[polyList]}
+  ];
+
+(* --------------------------------------------------------------------------
    ValidateSubtraction
    Self-consistency check at finite epsilon.
    Uses the ORIGINAL transformed polynomials (not cleared) to compute
@@ -1873,20 +1900,7 @@ Module[
      where Q_j are cleared polys with non-negative exponents. *)
   Module[{aNum, polyValsExpr, integrand},
     aNum = aVals /. fullRules;
-    polyValsExpr = Table[
-      Total[
-        Table[
-          Module[{coeff, exps, logY},
-            coeff = mono[[1]] /. kinRules;
-            exps  = mono[[2]];
-            logY  = Log /@ yVars;
-            coeff * Exp[Total[exps * logY]]
-          ],
-          {mono, clearedPolys[[j]]}
-        ]
-      ],
-      {j, Length[clearedPolys]}
-    ];
+    polyValsExpr = flatPolyValsWL[clearedPolys, kinRules, yVars];
     integrand = (pfBase /. fullRules) *
       Exp[Total[(aNum - 1) * Log /@ yVars]] *
       Times @@ MapThread[
@@ -2005,35 +2019,9 @@ Module[
     remYVars   = Table[Unique["rv"], {n}];
     remAnum    = a0 /. kinRules;
 
-    fullPolyVals = Table[
-      Total[
-        Table[
-          Module[{coeff, exps, logY},
-            coeff = mono[[1]] /. kinRules;
-            exps  = mono[[2]];
-            logY  = Log /@ remYVars;
-            coeff * Exp[Total[exps * logY]]
-          ],
-          {mono, clearedPolys[[j]]}
-        ]
-      ],
-      {j, Length[clearedPolys]}
-    ];
+    fullPolyVals = flatPolyValsWL[clearedPolys, kinRules, remYVars];
 
-    simpPolyVals = Table[
-      Total[
-        Table[
-          Module[{coeff, exps, logY},
-            coeff = mono[[1]] /. kinRules;
-            exps  = mono[[2]];
-            logY  = Log /@ remYVars;
-            coeff * Exp[Total[exps * logY]]
-          ],
-          {mono, simpPolys[[j]]}
-        ]
-      ],
-      {j, Length[simpPolys]}
-    ];
+    simpPolyVals = flatPolyValsWL[simpPolys, kinRules, remYVars];
 
     bracket = Times @@ MapThread[
         Function[{pv, be}, Exp[be * Log[pv]]],
