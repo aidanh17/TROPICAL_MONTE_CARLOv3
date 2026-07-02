@@ -77,8 +77,8 @@ per kinematic point (directly comparable to EvaluateTropicalMCIBP). Options: \
 (\"Integrator\", \"NSamples\", ...).";
 
 RunAllTests::usage =
-  "RunAllTests[] runs the validation suite (17 tests) with structured reporting. \
-Defined in tropical_eval_examples.wl.";
+  "RunAllTests[] runs the validation suite (18 tests) with structured reporting. \
+Defined in this file (Module 5).";
 
 ParsePolynomial::usage =
   "ParsePolynomial[poly, vars] parses a polynomial into a list of \
@@ -782,7 +782,6 @@ makeAuxVar[vars_List, auxIdx_Integer] := Module[{heads, h},
   heads = Head /@ vars;            (* e.g. {x, x} *)
   h = First[heads];
   (* Use the common head when all variables share it; otherwise the first. *)
-  If[!AllTrue[heads, # === h &], h = First[heads]];
   h[auxIdx]
 ];
 
@@ -1647,7 +1646,7 @@ Module[
 
 ProcessDivergentSector[sectorData_Association, integrandSpec_Association] :=
 Module[
-  {eps, k, aVals, a0, a1, ck, n, polyExps,
+  {eps, k, a0, a1, ck, n, polyExps,
    clearedPolys, detM, pfBase,
    B0, B1, simpPolys, fullPolys,
    g0FlatPolys, g0Prefactor, g0Avals,
@@ -1671,7 +1670,6 @@ Module[
   ck     = divInfo["ck"];
   a0     = divInfo["a0"];
   a1     = divInfo["a1"];
-  aVals  = sectorData["NewExponents"];  (* effective *)
   detM   = sectorData["DetM"];
   (* PrefactorBase (planAXpDIV.md §4.1): Abs[detM] for unlifted sectors,
      (Abs[detM]/Abs[mp]) z0^(ap/mp-1) for a lifted sector. *)
@@ -1841,11 +1839,11 @@ ValidateSubtraction[divSectorData_Association, sectorData_Association,
 Module[
   {eps, n, k, ck, a0, a1, aVals, polyExps,
    kinRules, epsRules, fullRules,
-   clearedPolys, simpPolys, minExps,
+   clearedPolys, simpPolys,
    detM, pfBase, domC, yVars,
    originalIntegral, g0Val, g1Val, remVal,
    divContrib, reconstructed, relError,
-   rawAVals, B0, B1},
+   B0, B1},
 
   eps      = integrandSpec["RegulatorSymbol"];
   n        = sectorData["Dimension"];
@@ -1854,13 +1852,11 @@ Module[
   a0       = divSectorData["a0"];
   a1       = divSectorData["a1"];
   aVals    = sectorData["NewExponents"];  (* effective, symbolic in eps *)
-  rawAVals = sectorData["RawExponents"];
   polyExps = sectorData["PolynomialExponents"];
   detM     = sectorData["DetM"];
   (* PrefactorBase (planAXpDIV.md §4.1) + lifted DomainConstraint (§4.2). *)
   pfBase   = Lookup[sectorData, "PrefactorBase", Abs[detM]];
   domC     = Lookup[sectorData, "DomainConstraint", None];
-  minExps  = sectorData["MinExponents"];
 
   kinRules = testKinematics;
   epsRules = {eps -> testEpsilon};
@@ -2252,10 +2248,10 @@ Module[{lines, polyVar},
                                        with a Batch mode (the old standalone
                                        batched-Vegas main is folded in here),
                                        result-assembly routed by info["IsIBP"]
-     GenerateCpp                    -> ONE public entry (the IBP variant is an
-                                       absorbed code path, selected by passing
-                                       ibpSectors); GenerateCppMonteCarlo kept as
-                                       a thin alias for API continuity.
+     GenerateCppMonteCarlo          -> public entry for the subtraction /
+                                       convergent path (defined below).
+     GenerateCppMonteCarloIBP       -> public entry for the IBP path
+                                       (defined in Module 2b).
 
    Output is byte-for-byte identical to the Phase-1 towers for every kind x
    sampler (golden-master regression, cross-check #25).  Integrator vocabulary
@@ -6181,19 +6177,6 @@ Module[
         tB0      = termData["PolyExponents"] /. kinRules;
         coeff0   = termData["Coeff0"] /. kinRules;
 
-        (* Evaluate un-flattened (using full epsilon-dependent exponents
-           from the IBP reduction, at finite epsilon) *)
-        Module[{termExps, termPolyExps, termCoeff, term, terms},
-          terms = ibpSectorData["ClearedPolys"];
-          term  = ibpData`Private`dummyNotUsed;  (* placeholder *)
-
-          (* Use the term's NewExponents from the IBP reduction,
-             evaluated at finite eps *)
-          termExps = ibpSectorData["IBPTerms"][[t]];
-          (* We need the original unexpanded term data.
-             Recompute from the processed data. *)
-        ];
-
         (* Simpler approach: evaluate at finite epsilon using
            original cleared polys and the term's effective exponents *)
         Module[{rawTerms, origTerm, termAlpha, termPE},
@@ -7177,14 +7160,13 @@ RunTest2[] := Module[
    -------------------------------------------------------------------------- *)
 
 RunTest3[] := Module[
-  {eps, exactPole, exactFinite, pass, testEps,
+  {exactPole, exactFinite, pass, testEps,
    numericalResult, exactAtEps, relErr},
 
   Print["--- Test 3: Divergent 1D ---"];
   Print["f(eps) = Integral[0,1] y^{2eps-1} / (1+y^2)"];
   Print["Exact: 1/(2eps) - log(2)/2"];
 
-  eps = Symbol["epsTest3"];
   exactPole   = 1/2;
   exactFinite = -Log[2]/2;
 
