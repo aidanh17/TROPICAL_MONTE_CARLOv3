@@ -6092,17 +6092,7 @@ Module[
   (* Original sector integral at finite epsilon *)
   Module[{aNum, polyValsExpr, integrand},
     aNum = aVals /. fullRules;
-    polyValsExpr = Table[
-      Total[Table[
-        Module[{coeff, exps},
-          coeff = mono[[1]] /. kinRules;
-          exps  = mono[[2]];
-          coeff * Exp[Total[exps * Log /@ yVars]]
-        ],
-        {mono, clearedPolys[[j]]}
-      ]],
-      {j, Length[clearedPolys]}
-    ];
+    polyValsExpr = flatPolyValsWL[clearedPolys, kinRules, yVars];
     integrand = (pfBase /. fullRules) *
       Exp[Total[(aNum - 1) * Log /@ yVars]] *
       Times @@ MapThread[
@@ -6180,17 +6170,7 @@ Module[
           termAlpha = termData["Alpha0"] + testEpsilon * termData["Alpha1"];
           termPE    = termData["PolyExponents"];
 
-          polyValsExpr = Table[
-            Total[Table[
-              Module[{coeff, exps},
-                coeff = mono[[1]] /. kinRules;
-                exps  = mono[[2]];
-                coeff * Exp[Total[exps * Log /@ ibpYVars]]
-              ],
-              {mono, clearedPolys[[j]]}
-            ]],
-            {j, Length[clearedPolys]}
-          ];
+          polyValsExpr = flatPolyValsWL[clearedPolys, kinRules, ibpYVars];
 
           integrand = (pfBase /. fullRules) *
             Exp[Total[(termAlpha - 1) * Log /@ ibpYVars]] *
