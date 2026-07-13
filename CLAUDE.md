@@ -41,7 +41,7 @@ cd MANUAL && pdflatex -interaction=nonstopmode manual.tex && pdflatex -interacti
 
 There is no aggregate test runner. Tests are the `TEST/cc_*.wl` cross-checks (numbered ~1–48) and
 the `TEST/phase*_selfgate.wl` gates. `EXAMPLES/` holds four narrated worked examples (`Ex-V3a`–`Ex-V3d.wl`,
-each keyed to `plan.md` §8.4 and specific cross-checks). **Note:** `MANUAL/manual.tex`'s "Command-Line
+each keyed to `OLD_PLANS/plan.md` §8.4 and specific cross-checks). **Note:** `MANUAL/manual.tex`'s "Command-Line
 Execution" section instead lists `EXAMPLES/run_validation_suite.wl` / `EXAMPLES/test_*.wl`, which **do
 not exist** — the real gate tests live in `TEST/`.
 
@@ -72,8 +72,8 @@ for `CC/` scripts, which skip gracefully if absent).
 
 ## Invariants you must preserve (these gate every change)
 
-These are project-wide contracts, enforced by the test suite and stated across `plan.md` §1.4 /
-`SUMMARY.txt` / the `plan*.md` feature notes. Violating one is a regression even if numbers look right.
+These are project-wide contracts, enforced by the test suite and stated across `OLD_PLANS/plan.md` §1.4 /
+`SUMMARY.txt` / the `OLD_PLANS/plan*.md` feature notes. Violating one is a regression even if numbers look right.
 
 1. **Exactness.** The decomposition is symbolic-exact: **no decision inside it is made by evaluating
    a float.** Floats appear only in (a) the C++ integration and (b) numerical cross-checks. Tests
@@ -94,10 +94,15 @@ These are project-wide contracts, enforced by the test suite and stated across `
 
 ## Where the design is written down
 
-- `plan.md` — what v3 is, the merge of the two parent trees, per-phase scope/gates, design decisions
-  (Dn) and non-goals (Nn).
-- `planAXpDIV.md` (lift + divergence), `planCXLIFTDIV.md` (complex-`B` × lift × divergence),
-  `planAXpDIVv2.md` (complex-**monomial** `A` × lift), `planR.md` (review-remediation) — each is the
-  spec for one feature; the matching `TEST/cc_4x.wl` is its cross-check.
+- `OLD_PLANS/plan.md` — what v3 is, the merge of the two parent trees, per-phase scope/gates, design
+  decisions (Dn) and non-goals (Nn).
+- `OLD_PLANS/planAXpDIV.md` (lift + divergence), `OLD_PLANS/planCXLIFTDIV.md` (complex-`B` × lift ×
+  divergence), `OLD_PLANS/planAXpDIVv2.md` (complex-**monomial** `A` × lift), `OLD_PLANS/planR.md`
+  (review-remediation) — each is the spec for one feature; the matching `TEST/cc_4x.wl` is its
+  cross-check. `OLD_PLANS/` also holds `planIBPCX.md`, `planIBPMULTIDIV.md`, and `planLIFTDIVZ0.md`
+  (later feature specs, same convention).
 - `ORCHESTRATION.md` + `ORCH/*.js` — how v3 was *built* (per-phase unattended multi-agent workflows
   with adversarial verifiers). Not needed for ordinary development.
+- `fable_inventory.md` / `fable_refactor_plan.md` — the in-progress internal-cleanup refactor of
+  `tropical_eval.wl` (dead-code removal, dedup, decomposition); behavior-preserving, gated by the
+  same self-gate suites. Move to `OLD_PLANS/` once complete.
